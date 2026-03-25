@@ -10,13 +10,18 @@ fun RxBleConnection.resolveCharacteristic(
     instanceId: Int,
 ): Single<BluetoothGattCharacteristic> =
     discoverServices().flatMap { services ->
-        Single.just(
-            services.bluetoothGattServices.flatMap { service ->
-                service.characteristics.filter {
-                    it.uuid == uuid && it.instanceId == instanceId
-                }
-            }.single(),
-        )
+        val matches = services.bluetoothGattServices.flatMap { service ->
+            service.characteristics.filter {
+                it.uuid == uuid && it.instanceId == instanceId
+            }
+        }
+        if (matches.size == 1) {
+            Single.just(matches.first())
+        } else if (matches.isEmpty()) {
+            Single.error(NoSuchElementException("Characteristic $uuid with instanceId $instanceId not found"))
+        } else {
+            Single.error(IllegalArgumentException("Multiple characteristics found for $uuid with instanceId $instanceId"))
+        }
     }
 
 fun RxBleConnection.writeCharWithResponse(
