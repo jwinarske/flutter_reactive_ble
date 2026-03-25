@@ -441,6 +441,11 @@ static void on_properties_changed(const std::string& obj_path,
     }
 
     if (iface == kDevice1) {
+        // Debug: log which properties changed
+        for (auto& [k, v] : changed) {
+            fprintf(stderr, "BLEDBG: Device PropertiesChanged: %s on %s\n",
+                    k.c_str(), obj_path.c_str());
+        }
         if (auto it = changed.find("Connected"); it != changed.end()) {
             bool connected = it->second.get<bool>();
             // Extract address from path: /org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF
