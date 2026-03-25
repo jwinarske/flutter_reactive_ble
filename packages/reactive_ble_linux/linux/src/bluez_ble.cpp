@@ -327,6 +327,9 @@ struct BleState {
     std::mutex                              pending_mu;
     std::unordered_map<int64_t, std::string> pending_char_path;
 
+    // Persistent adapter proxy for power state monitoring (lives for entire session)
+    std::unique_ptr<sdbus::IProxy> adapter_monitor_proxy;
+
     // Scan proxies — must outlive bluez_ble_start_scan so signal handlers stay alive
     std::unique_ptr<sdbus::IProxy> scan_obj_proxy;     // InterfacesAdded
     std::unique_ptr<sdbus::IProxy> scan_adapter_proxy;  // PropertiesChanged on adapter
@@ -491,6 +494,44 @@ int bluez_ble_register_event_port(int64_t port_id) {
     if (!g_state) return -1;
     g_state->event_port.store(static_cast<Dart_Port>(port_id),
                                std::memory_order_relaxed);
+
+    // Register persistent adapter state monitor — subscribe to PropertiesChanged
+    // on the adapter so power on/off transitions are always reported to Dart.
+    try {
+        g_state->adapter_monitor_proxy = sdbus::createProxy(*g_state->conn,
+                                             svc(kBluezService),
+                                             opath(kAdapterPath));
+        g_state->adapter_monitor_proxy->registerSignalHandler(
+            ifc(kProperties), sig_name("PropertiesChanged"),
+            [](sdbus::Signal sig) {
+                std::string iface;
+                std::map<std::string, sdbus::Variant> changed;
+                std::vector<std::string> invalidated;
+                sig >> iface >> changed >> invalidated;
+
+                if (iface != kAdapter1) return;
+                Dart_Port port = event_port();
+                if (!port) return;
+
+                bool has_state_change = changed.count("Powered") || changed.count("Discovering");
+                if (!has_state_change) return;
+
+                // Re-read current state to get consistent snapshot
+                try {
+                    auto proxy = sdbus::createProxy(*g_state->conn,
+                                                     svc(kBluezService),
+                                                     opath(kAdapterPath));
+                    auto powered     = get_prop<bool>(*proxy, kAdapter1, "Powered");
+                    auto discovering = get_prop<bool>(*proxy, kAdapter1, "Discovering");
+                    post_adapter_state(port,
+                                       powered.value_or(false),
+                                       discovering.value_or(false));
+                } catch (...) {}
+            });
+    } catch (...) {
+        // Non-fatal: adapter monitoring won't work but other ops will
+    }
+
     return 0;
 }
 

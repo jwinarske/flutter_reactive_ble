@@ -37,7 +37,12 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     await _ble.initialize();
     _initialized = true;
     _setupEventBridge();
-    _logger?.log('Initialize BLE Linux platform: done, event bridge set up');
+
+    // Auto-power-on the adapter if it's off
+    _ble.adapterSetPowered(powered: true);
+
+    // ignore: avoid_print
+    print('BLELINUX: initialize done, requested adapter power on');
   }
 
   @override
