@@ -237,8 +237,18 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     // Stop scanning before connecting — BlueZ can't reliably do both
     _ble.stopScan();
     _ble.connectToDevice(id);
-    await _ble.waitForConnection(id,
-        timeout: connectionTimeout ?? const Duration(seconds: 30));
+
+    // Wait for connected state via our unified _connCtrl, not the
+    // derived _ble.connectionEvents stream which misses events.
+    final timeout = connectionTimeout ?? const Duration(seconds: 30);
+    await _connCtrl!.stream
+        .where((u) =>
+            u.deviceId.toUpperCase() == id.toUpperCase() &&
+            (u.connectionState == DeviceConnectionState.connected ||
+             u.failure != null))
+        .first
+        .timeout(timeout, onTimeout: () => throw BleException(
+            'Connection to $id timed out'));
 
     // Wait for BlueZ GATT discovery and populate cache
     try {
