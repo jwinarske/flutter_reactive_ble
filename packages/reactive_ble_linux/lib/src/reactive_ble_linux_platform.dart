@@ -73,13 +73,16 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     //
     // Subscribe directly to the raw events stream so the subscription is
     // registered in the same synchronous call as the controller creation.
-    BleLogger.i('platform', '_setupEventBridge: subscribing to _ble.events');
+    // ignore: avoid_print
+    print('BLELINUX: _setupEventBridge subscribing to _ble.events, hasListeners=${_statusCtrl?.hasListener}');
     _statusSub = _ble.events.listen((event) {
-      BleLogger.d('platform', 'raw event: ${event.runtimeType}');
+      // ignore: avoid_print
+      print('BLELINUX: _statusSub got ${event.runtimeType}');
       if (event is BleAdapterStateEvent) {
         final s = event.state;
         final status = s.powered ? BleStatus.ready : BleStatus.poweredOff;
-        BleLogger.i('platform', 'adapter powered=${s.powered} → $status');
+        // ignore: avoid_print
+        print('BLELINUX: adapter powered=${s.powered} → $status, _statusCtrl hasListener=${_statusCtrl?.hasListener}');
         _lastStatus = status;
         _statusCtrl?.add(status);
       }
