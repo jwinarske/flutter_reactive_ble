@@ -105,6 +105,8 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
         _statusCtrl?.add(status);
       } else if (event is BleConnectionEvent2) {
         final e = event.event;
+        // ignore: avoid_print
+        print('BLELINUX: unified listener got connection: ${e.address} ${e.state} err=${e.errorCode}');
         final state = switch (e.state) {
           BleConnectionState.connecting => DeviceConnectionState.connecting,
           BleConnectionState.connected => DeviceConnectionState.connected,

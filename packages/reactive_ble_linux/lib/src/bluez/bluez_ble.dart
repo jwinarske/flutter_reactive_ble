@@ -541,6 +541,9 @@ final class BluezBle implements BleConnectionSource {
     final event = decodeBleEvent(message);
     if (event == null) return;
 
+    // ignore: avoid_print
+    print('BLUEZ_DART: _onNativeMessage decoded ${event.runtimeType}');
+
     // Invalidate GATT cache on disconnect
     if (event is BleConnectionEvent2) {
       final e = event.event;
