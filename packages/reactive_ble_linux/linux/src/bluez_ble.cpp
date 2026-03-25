@@ -306,7 +306,6 @@ namespace {
 
 struct BleState {
     std::unique_ptr<sdbus::IConnection> conn;
-    std::jthread                        event_thread;
 
     std::atomic<Dart_Port>              event_port{0};
 
@@ -460,24 +459,11 @@ int bluez_ble_init(void* dart_api_dl_data) {
         g_state->conn = sdbus::createSystemBusConnection();
         g_state->running.store(true);
 
-        // Run the sdbus event loop on a background jthread
-        g_state->event_thread = std::jthread([](std::stop_token st) {
-            while (!st.stop_requested()) {
-                try {
-                    g_state->conn->enterEventLoopAsync();
-                    // enterEventLoopAsync returns immediately; we use
-                    // the blocking form in a way that respects stop_token.
-                    // Instead: use processPendingRequest in a poll loop.
-                    while (!st.stop_requested()) {
-                        g_state->conn->processPendingEvent();
-                    }
-                } catch (const sdbus::Error& e) {
-                    Dart_Port port = event_port();
-                    if (port) post_error(port, e.what());
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                }
-            }
-        });
+        // Let sdbus-cpp manage its own event loop thread.
+        // enterEventLoopAsync() spawns an internal thread that processes
+        // D-Bus events. We must NOT also call processPendingEvent() from
+        // another thread — that causes EAGAIN races on the sd_bus fd.
+        g_state->conn->enterEventLoopAsync();
     } catch (const std::exception& e) {
         g_state.reset();
         return -2;
@@ -487,7 +473,6 @@ int bluez_ble_init(void* dart_api_dl_data) {
 
 void bluez_ble_shutdown(void) {
     if (!g_state) return;
-    g_state->event_thread.request_stop();
     if (g_state->conn) {
         try { g_state->conn->leaveEventLoop(); } catch (...) {}
     }
