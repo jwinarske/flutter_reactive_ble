@@ -784,39 +784,45 @@ int bluez_ble_connect(const char* address) {
                 on_properties_changed(path, iface, changed, invalidated);
             });
 
-        // Async connect — connection state changes are reported via
-        // PropertiesChanged (on_properties_changed), not the method reply.
-        // Only post an error if the Connect() D-Bus call itself fails
-        // (e.g. device not found, adapter off). Success means BlueZ
-        // accepted the request; actual Connected=true comes via signal.
-        proxy->callMethodAsync(mem("Connect"))
-             .onInterface(ifc(kDevice1))
-             .uponReplyInvoke([path, address = std::string(address)]
-                              (std::optional<sdbus::Error> err) {
-                 if (!err) return; // success — wait for PropertiesChanged
-                 // Ignore "InProgress" — a connect is already underway
-                 if (err->getName() == "org.bluez.Error.InProgress") return;
-                 Dart_Port port = event_port();
-                 if (!port) return;
-                 uint8_t addr[6]{};
-                 parse_bd_addr(address, addr);
-                 post_connection(port, addr, 0u /*disconnected*/, 1u /*error*/);
-                 post_error(port, err->what());
-             });
-
-        // Store proxy so signal handler and async callback survive
+        // Store proxy FIRST so signal handlers survive
         {
             std::lock_guard lock(g_state->device_proxies_mu);
             g_state->device_proxies[path] = std::move(proxy);
         }
 
         // Post "connecting" state immediately
-        Dart_Port port = event_port();
-        if (port) {
-            uint8_t addr[6]{};
-            parse_bd_addr(address, addr);
-            post_connection(port, addr, 1u /*connecting*/, 0u);
+        {
+            Dart_Port port = event_port();
+            if (port) {
+                uint8_t addr[6]{};
+                parse_bd_addr(address, addr);
+                post_connection(port, addr, 1u /*connecting*/, 0u);
+            }
         }
+
+        // Connect asynchronously on a background thread so the Dart
+        // isolate isn't blocked. The synchronous Connect() D-Bus method
+        // blocks until connected or failed (up to ~30s). Connection
+        // state is reported via PropertiesChanged signal handler.
+        std::thread([path, address = std::string(address)]() {
+            try {
+                std::lock_guard lock(g_state->device_proxies_mu);
+                auto it = g_state->device_proxies.find(path);
+                if (it == g_state->device_proxies.end()) return;
+                it->second->callMethod(mem("Connect"))
+                    .onInterface(ifc(kDevice1));
+            } catch (const sdbus::Error& e) {
+                if (std::string_view(e.getName()) == "org.bluez.Error.InProgress")
+                    return;
+                Dart_Port port = event_port();
+                if (!port) return;
+                uint8_t addr[6]{};
+                parse_bd_addr(address, addr);
+                post_connection(port, addr, 0u /*disconnected*/, 1u /*error*/);
+                post_error(port, e.what());
+            }
+        }).detach();
+
         return 0;
     } catch (const sdbus::Error& e) {
         if (Dart_Port port = event_port()) post_error(port, e.what());
