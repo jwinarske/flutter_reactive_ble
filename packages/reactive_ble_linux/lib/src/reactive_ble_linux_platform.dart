@@ -235,6 +235,8 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   Future<void> _connectAndDiscover(
       String id, Duration? connectionTimeout) async {
     await _ensureInit();
+    // Stop scanning before connecting — BlueZ can't reliably do both
+    _ble.stopScan();
     _ble.connectToDevice(id);
     await _ble.waitForConnection(id,
         timeout: connectionTimeout ?? const Duration(seconds: 30));
