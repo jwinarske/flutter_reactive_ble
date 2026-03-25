@@ -181,7 +181,10 @@ class ReactiveBleMobilePlatform extends ReactiveBlePlatform {
             _argsToProtobufConverter
                 .createWriteCharacteristicRequest(characteristic, value)
                 .writeToBuffer())
-        .then((data) => _protobufConverter.writeCharacteristicInfoFrom(data!));
+        .then((data) {
+          if (data == null) throw StateError('Platform returned null for writeCharacteristicWithResponse');
+          return _protobufConverter.writeCharacteristicInfoFrom(data);
+        });
   }
 
   @override
@@ -199,7 +202,10 @@ class ReactiveBleMobilePlatform extends ReactiveBlePlatform {
               .createWriteCharacteristicRequest(characteristic, value)
               .writeToBuffer(),
         )
-        .then((data) => _protobufConverter.writeCharacteristicInfoFrom(data!));
+        .then((data) {
+          if (data == null) throw StateError('Platform returned null for writeCharacteristicWithoutResponse');
+          return _protobufConverter.writeCharacteristicInfoFrom(data);
+        });
   }
 
   @override
@@ -245,7 +251,10 @@ class ReactiveBleMobilePlatform extends ReactiveBlePlatform {
               .createNegotiateMtuRequest(deviceId, mtu!)
               .writeToBuffer(),
         )
-        .then((data) => _protobufConverter.mtuSizeFrom(data!));
+        .then((data) {
+          if (data == null) throw StateError('Platform returned null for negotiateMtuSize');
+          return _protobufConverter.mtuSizeFrom(data);
+        });
   }
 
   @override
@@ -260,7 +269,10 @@ class ReactiveBleMobilePlatform extends ReactiveBlePlatform {
               .createChangeConnectionPrioRequest(deviceId, priority)
               .writeToBuffer(),
         )
-        .then((data) => _protobufConverter.connectionPriorityInfoFrom(data!));
+        .then((data) {
+          if (data == null) throw StateError('Platform returned null for requestConnectionPriority');
+          return _protobufConverter.connectionPriorityInfoFrom(data);
+        });
   }
 
   @override
@@ -274,7 +286,10 @@ class ReactiveBleMobilePlatform extends ReactiveBlePlatform {
               .createClearGattCacheRequest(deviceId)
               .writeToBuffer(),
         )
-        .then((data) => _protobufConverter.clearGattCacheResultFrom(data!));
+        .then((data) {
+          if (data == null) throw StateError('Platform returned null for clearGattCache');
+          return _protobufConverter.clearGattCacheResultFrom(data);
+        });
   }
 
   @override
@@ -287,7 +302,10 @@ class ReactiveBleMobilePlatform extends ReactiveBlePlatform {
               .createDiscoverServicesRequest(deviceId)
               .writeToBuffer(),
         )
-        .then((data) => _protobufConverter.discoveredServicesFrom(data!));
+        .then((data) {
+          if (data == null) throw StateError('Platform returned null for discoverServices');
+          return _protobufConverter.discoveredServicesFrom(data);
+        });
   }
 
   @override
@@ -300,7 +318,10 @@ class ReactiveBleMobilePlatform extends ReactiveBlePlatform {
               .createDiscoverServicesRequest(deviceId)
               .writeToBuffer(),
         )
-        .then((data) => _protobufConverter.discoveredServicesFrom(data!));
+        .then((data) {
+          if (data == null) throw StateError('Platform returned null for getDiscoverServices');
+          return _protobufConverter.discoveredServicesFrom(data);
+        });
   }
 
   @override
@@ -311,7 +332,10 @@ class ReactiveBleMobilePlatform extends ReactiveBlePlatform {
             .createReadRssiRequest(deviceId)
             .writeToBuffer(),
       )
-      .then((data) => _protobufConverter.readRssiResultFrom(data!));
+      .then((data) {
+        if (data == null) throw StateError('Platform returned null for readRssi');
+        return _protobufConverter.readRssiResultFrom(data);
+      });
 }
 
 class ReactiveBleMobilePlatformFactory {
