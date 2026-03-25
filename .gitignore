@@ -73,3 +73,6 @@ Flutter.podspec
 
 pubspec_overrides.yaml
 .ruby-version
+
+example/.desktop-homescreen/
+packages/reactive_ble_linux/linux/lib/

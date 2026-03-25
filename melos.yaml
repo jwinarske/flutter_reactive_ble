@@ -1,4 +1,4 @@
-name: flutter_reactive_ble
+rename: flutter_reactive_ble
 packages:
   - packages/*
   - example
