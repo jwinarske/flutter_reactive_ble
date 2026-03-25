@@ -115,6 +115,8 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
           BleConnectionState.disconnected =>
             DeviceConnectionState.disconnected,
         };
+        // ignore: avoid_print
+        print('BLELINUX: adding to _connCtrl: ${e.address} $state, hasListener=${_connCtrl?.hasListener}');
         _connCtrl?.add(ConnectionStateUpdate(
           deviceId: e.address,
           connectionState: state,
@@ -180,6 +182,8 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     if (_connCtrl == null) {
       return const Stream<ConnectionStateUpdate>.empty();
     }
+    // ignore: avoid_print
+    print('BLELINUX: connectionUpdateStream accessed, hasListener=${_connCtrl!.hasListener}');
     return _connCtrl!.stream;
   }
 
