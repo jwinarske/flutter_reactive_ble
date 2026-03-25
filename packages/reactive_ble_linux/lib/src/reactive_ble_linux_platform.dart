@@ -24,9 +24,7 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   StreamController<BleStatus>? _statusCtrl;
   StreamController<ScanResult>? _scanCtrl;
   BleStatus _lastStatus = BleStatus.unknown;
-  StreamSubscription<BleConnectionEvent>? _connSub;
-  StreamSubscription<BleCharEvent>? _notifSub;
-  StreamSubscription<BleEvent>? _statusSub;
+  StreamSubscription<BleEvent>? _statusSub;  // unified event handler
   StreamSubscription<BleScanResult>? _scanSub;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
@@ -47,8 +45,6 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     if (!_initialized) return;
     _logger?.log('Deinitialize BLE Linux platform');
     _initialized = false;
-    await _connSub?.cancel();
-    await _notifSub?.cancel();
     await _statusSub?.cancel();
     await _scanSub?.cancel();
     await _connCtrl?.close();
@@ -59,8 +55,6 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     _charCtrl = null;
     _statusCtrl = null;
     _scanCtrl = null;
-    _connSub = null;
-    _notifSub = null;
     _statusSub = null;
     _scanSub = null;
     await _ble.dispose();
@@ -99,56 +93,60 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     //
     // Subscribe directly to the raw events stream so the subscription is
     // registered in the same synchronous call as the controller creation.
+    // Single unified listener on the raw events stream.
+    // All event routing happens here so we have exactly one subscription
+    // on the broadcast stream — no derived .where().map() chains that
+    // could miss events.
     _statusSub = _ble.events.listen((event) {
       if (event is BleAdapterStateEvent) {
         final s = event.state;
         final status = s.powered ? BleStatus.ready : BleStatus.poweredOff;
         _lastStatus = status;
         _statusCtrl?.add(status);
+      } else if (event is BleConnectionEvent2) {
+        final e = event.event;
+        final state = switch (e.state) {
+          BleConnectionState.connecting => DeviceConnectionState.connecting,
+          BleConnectionState.connected => DeviceConnectionState.connected,
+          BleConnectionState.disconnecting =>
+            DeviceConnectionState.disconnecting,
+          BleConnectionState.disconnected =>
+            DeviceConnectionState.disconnected,
+        };
+        _connCtrl?.add(ConnectionStateUpdate(
+          deviceId: e.address,
+          connectionState: state,
+          failure: e.hasError
+              ? GenericFailure<ConnectionError>(
+                  code: ConnectionError.failedToConnect,
+                  message: 'Error code ${e.errorCode}',
+                )
+              : null,
+        ));
+      } else if (event is BleCharDataEvent &&
+                 event.event.eventType == BleEventType.charNotify) {
+        final e = event.event;
+        final charPath = e.charPath;
+        final deviceAddress = _extractDeviceAddress(charPath);
+        final charUuid = _ble.gattCache.resolveUuid(deviceAddress, charPath);
+
+        _charCtrl?.add(CharacteristicValue(
+          characteristic: CharacteristicInstance(
+            characteristicId: charUuid != null
+                ? Uuid.parse(charUuid)
+                : Uuid.parse('00000000-0000-0000-0000-000000000000'),
+            characteristicInstanceId: charPath,
+            serviceId: Uuid.parse('00000000-0000-0000-0000-000000000000'),
+            serviceInstanceId: '',
+            deviceId: deviceAddress,
+          ),
+          result: Result.success(e.data.toList()),
+        ));
       }
     });
     // Request initial state now that subscription is active
     _ble.requestAdapterState();
 
-    _connSub = _ble.connectionEvents.listen((e) {
-      final state = switch (e.state) {
-        BleConnectionState.connecting => DeviceConnectionState.connecting,
-        BleConnectionState.connected => DeviceConnectionState.connected,
-        BleConnectionState.disconnecting =>
-          DeviceConnectionState.disconnecting,
-        BleConnectionState.disconnected =>
-          DeviceConnectionState.disconnected,
-      };
-      _connCtrl?.add(ConnectionStateUpdate(
-        deviceId: e.address,
-        connectionState: state,
-        failure: e.hasError
-            ? GenericFailure<ConnectionError>(
-                code: ConnectionError.failedToConnect,
-                message: 'Error code ${e.errorCode}',
-              )
-            : null,
-      ));
-    });
-
-    _notifSub = _ble.characteristicNotifications.listen((e) {
-      final charPath = e.charPath;
-      final deviceAddress = _extractDeviceAddress(charPath);
-      final charUuid = _ble.gattCache.resolveUuid(deviceAddress, charPath);
-
-      _charCtrl?.add(CharacteristicValue(
-        characteristic: CharacteristicInstance(
-          characteristicId: charUuid != null
-              ? Uuid.parse(charUuid)
-              : Uuid.parse('00000000-0000-0000-0000-000000000000'),
-          characteristicInstanceId: charPath,
-          serviceId: Uuid.parse('00000000-0000-0000-0000-000000000000'),
-          serviceInstanceId: '',
-          deviceId: deviceAddress,
-        ),
-        result: Result.success(e.data.toList()),
-      ));
-    });
   }
 
   // ── Status stream ──────────────────────────────────────────────────────

@@ -456,6 +456,8 @@ static void on_properties_changed(const std::string& obj_path,
                 for (char& c : dev) if (c == '_') c = ':';
                 uint8_t addr[6]{};
                 parse_bd_addr(dev, addr);
+                fprintf(stderr, "BLEDBG: posting connection event: %s connected=%d port=%lld\n",
+                        dev.c_str(), (int)connected, (long long)port);
                 post_connection(port, addr, connected ? 2u : 0u, 0u);
             }
         }
