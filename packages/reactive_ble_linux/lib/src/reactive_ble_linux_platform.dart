@@ -22,6 +22,7 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   StreamController<ConnectionStateUpdate>? _connCtrl;
   StreamController<CharacteristicValue>? _charCtrl;
   StreamController<BleStatus>? _statusCtrl;
+  BleStatus _lastStatus = BleStatus.unknown;
   StreamSubscription<BleConnectionEvent>? _connSub;
   StreamSubscription<BleCharEvent>? _notifSub;
   StreamSubscription<BleEvent>? _statusSub;
@@ -79,6 +80,7 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
         final s = event.state;
         final status = s.powered ? BleStatus.ready : BleStatus.poweredOff;
         _logger?.log('bleStatusStream: adapter powered=${s.powered} → $status');
+        _lastStatus = status;
         _statusCtrl?.add(status);
       }
     });
@@ -133,7 +135,19 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     if (_statusCtrl == null) {
       return const Stream<BleStatus>.empty();
     }
-    return _statusCtrl!.stream;
+    // Replay the last known status immediately for late subscribers,
+    // then forward live updates. This is needed because _statusCtrl is
+    // a broadcast stream that doesn't buffer past events.
+    final ctrl = StreamController<BleStatus>();
+    ctrl.onListen = () {
+      ctrl.add(_lastStatus);
+      _statusCtrl!.stream.listen(
+        ctrl.add,
+        onError: ctrl.addError,
+        onDone: ctrl.close,
+      );
+    };
+    return ctrl.stream;
   }
 
   // ── Connection stream ──────────────────────────────────────────────────
