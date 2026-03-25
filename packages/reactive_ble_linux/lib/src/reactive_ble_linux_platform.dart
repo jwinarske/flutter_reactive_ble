@@ -32,17 +32,12 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   @override
   Future<void> initialize() async {
     if (_initialized) return;
-    _logger?.log('Initialize BLE Linux platform');
-    BleLogger.minimumLevel = BleLogLevel.debug;
     await _ble.initialize();
     _initialized = true;
     _setupEventBridge();
 
     // Auto-power-on the adapter if it's off
     _ble.adapterSetPowered(powered: true);
-
-    // ignore: avoid_print
-    print('BLELINUX: initialize done, requested adapter power on');
   }
 
   @override
@@ -78,16 +73,10 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     //
     // Subscribe directly to the raw events stream so the subscription is
     // registered in the same synchronous call as the controller creation.
-    // ignore: avoid_print
-    print('BLELINUX: _setupEventBridge subscribing to _ble.events, hasListeners=${_statusCtrl?.hasListener}');
     _statusSub = _ble.events.listen((event) {
-      // ignore: avoid_print
-      print('BLELINUX: _statusSub got ${event.runtimeType}');
       if (event is BleAdapterStateEvent) {
         final s = event.state;
         final status = s.powered ? BleStatus.ready : BleStatus.poweredOff;
-        // ignore: avoid_print
-        print('BLELINUX: adapter powered=${s.powered} → $status, _statusCtrl hasListener=${_statusCtrl?.hasListener}');
         _lastStatus = status;
         _statusCtrl?.add(status);
       }
@@ -148,15 +137,9 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     // a broadcast stream that doesn't buffer past events.
     final ctrl = StreamController<BleStatus>();
     ctrl.onListen = () {
-      // ignore: avoid_print
-      print('BLELINUX: bleStatusStream onListen, replaying _lastStatus=$_lastStatus');
       ctrl.add(_lastStatus);
       _statusCtrl!.stream.listen(
-        (s) {
-          // ignore: avoid_print
-          print('BLELINUX: bleStatusStream forwarding $s from _statusCtrl');
-          ctrl.add(s);
-        },
+        ctrl.add,
         onError: ctrl.addError,
         onDone: ctrl.close,
       );
@@ -194,9 +177,7 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     ctrl = StreamController<ScanResult>(
       onListen: () async {
         await _ensureInit();
-        _logger?.log('scanStream: subscribed to _ble.scanResults');
         sub = _ble.scanResults.listen((r) {
-          _logger?.log('scanStream: got scan result ${r.address} ${r.name} rssi=${r.rssi}');
           final mfrData = r.manufacturerCompanyId != 0xFFFF
               ? _encodeMfrData(r.manufacturerCompanyId, r.manufacturerData)
               : Uint8List(0);
@@ -236,9 +217,7 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   Future<void> _startScan(List<Uuid> withServices) async {
     await _ensureInit();
     final uuids = withServices.map((u) => u.toString()).toList();
-    _logger?.log('_startScan: calling _ble.startScan(filterUuids=$uuids)');
-    final rc = await _ble.startScan(filterUuids: uuids);
-    _logger?.log('_startScan: startScan returned $rc');
+    await _ble.startScan(filterUuids: uuids);
   }
 
   // ── Connect / Disconnect ───────────────────────────────────────────────
