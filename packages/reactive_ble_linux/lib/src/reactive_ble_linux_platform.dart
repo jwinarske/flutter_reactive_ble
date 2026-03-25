@@ -464,8 +464,8 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
 
   @override
   Future<int> readRssi(String deviceId) async {
-    // RSSI not available post-connection in BlueZ without HCI commands
-    return 0;
+    await _ensureInit();
+    return _ble.readRssi(deviceId);
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────

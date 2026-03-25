@@ -1214,5 +1214,18 @@ int bluez_ble_adapter_set_powered(int powered) {
     }
 }
 
+int bluez_ble_read_rssi(const char* address) {
+    if (!g_state || !address) return 0;
+    try {
+        std::string path = device_path(address);
+        auto proxy = sdbus::createProxy(*g_state->conn,
+                                         svc(kBluezService), opath(path));
+        auto rssi = get_prop<int16_t>(*proxy, kDevice1, "RSSI");
+        return rssi.value_or(0);
+    } catch (...) {
+        return 0;
+    }
+}
+
 const char* bluez_ble_version(void) { return kVersion; }
 void        bluez_ble_free(void* ptr) { ::free(ptr); }

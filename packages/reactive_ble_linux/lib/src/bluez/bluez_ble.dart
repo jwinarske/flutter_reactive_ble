@@ -400,6 +400,15 @@ final class BluezBle implements BleConnectionSource {
     return bluezBleAdapterSetPowered(powered ? 1 : 0);
   }
 
+  /// Read the last known RSSI for a device.  Returns 0 if unavailable.
+  int readRssi(String address) {
+    _assertInitialized();
+    return using((arena) {
+      return bluezBleReadRssi(
+          address.toNativeUtf8(allocator: arena).cast<Char>());
+    });
+  }
+
   // ── GATT read ─────────────────────────────────────────────────────────────
 
   /// Asynchronously read characteristic at [charPath].

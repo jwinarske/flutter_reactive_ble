@@ -221,6 +221,13 @@ final _bluezBleAdapterSetPowered = _lib.lookupFunction<
 int bluezBleAdapterSetPowered(int powered) =>
     _bluezBleAdapterSetPowered(powered);
 
+// int bluez_ble_read_rssi(const char* address)
+final _bluezBleReadRssi = _lib.lookupFunction<
+    Int32 Function(Pointer<Char>),
+    int Function(Pointer<Char>)>('bluez_ble_read_rssi');
+
+int bluezBleReadRssi(Pointer<Char> address) => _bluezBleReadRssi(address);
+
 // ── SPSC Ring ─────────────────────────────────────────────────────────────
 
 // BleNotifRing* bluez_ble_ring_create(uint32_t capacity)

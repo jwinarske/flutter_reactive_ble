@@ -209,6 +209,9 @@ BLE_EXPORT int bluez_ble_wait_services_resolved(const char* address, uint32_t ti
 // Set adapter Powered property.  powered=1 turns on, 0 turns off.
 BLE_EXPORT int bluez_ble_adapter_set_powered(int powered);
 
+// Read the last known RSSI for a device.  Returns 0 if unavailable.
+BLE_EXPORT int bluez_ble_read_rssi(const char* address);
+
 // ── Utilities ─────────────────────────────────────────────────────────────
 BLE_EXPORT const char* bluez_ble_version(void);
 BLE_EXPORT void        bluez_ble_free(void* ptr);  // wraps free()
