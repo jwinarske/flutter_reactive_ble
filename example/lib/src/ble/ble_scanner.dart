@@ -9,7 +9,17 @@ class BleScanner implements ReactiveState<BleScannerState> {
     required FlutterReactiveBle ble,
     required void Function(String message) logMessage,
   })  : _ble = ble,
-        _logMessage = logMessage;
+        _logMessage = logMessage {
+    // Clear stale devices when the adapter powers off
+    _ble.statusStream.listen((status) {
+      if (status != BleStatus.ready) {
+        _devices.clear();
+        _subscription?.cancel();
+        _subscription = null;
+        _pushState();
+      }
+    });
+  }
 
   final FlutterReactiveBle _ble;
   final void Function(String message) _logMessage;
