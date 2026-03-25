@@ -73,9 +73,9 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     //
     // Subscribe directly to the raw events stream so the subscription is
     // registered in the same synchronous call as the controller creation.
-    // Using adapterStateStream creates a .where().map() transform that
-    // may not be fully wired before the first event arrives.
+    _logger?.log('_setupEventBridge: subscribing to _ble.events for status');
     _statusSub = _ble.events.listen((event) {
+      _logger?.log('_setupEventBridge: raw event received: ${event.runtimeType}');
       if (event is BleAdapterStateEvent) {
         final s = event.state;
         final status = s.powered ? BleStatus.ready : BleStatus.poweredOff;
