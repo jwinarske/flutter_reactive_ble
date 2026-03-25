@@ -11,11 +11,29 @@ struct CharacteristicWriteTaskController: PeripheralTaskController {
     }
 
     func start(peripheral: CBPeripheral) -> SubjectTask {
+        let serviceIndex = Int(task.key.serviceInstanceID) ?? 0
+        let characteristicIndex = Int(task.key.instanceID) ?? 0
+        let filteredServices = peripheral.services?.filter({ $0.uuid == task.key.serviceID }) ?? []
+
         guard
             peripheral.state == .connected,
-            let service = peripheral.services?.filter({ $0.uuid == task.key.serviceID })[Int(task.key.serviceInstanceID) ?? 0],
-            let characteristic = service.characteristics?.filter({ $0.uuid == task.key.id })[Int(task.key.instanceID) ?? 0],
-            characteristic.properties.contains(.write)
+            serviceIndex >= 0, serviceIndex < filteredServices.count
+        else {
+            return task.with(state: task.state.finished(PluginError.internalInconcictency(details: nil)))
+        }
+
+        let service = filteredServices[serviceIndex]
+        let filteredCharacteristics = service.characteristics?.filter({ $0.uuid == task.key.id }) ?? []
+
+        guard
+            characteristicIndex >= 0, characteristicIndex < filteredCharacteristics.count
+        else {
+            return task.with(state: task.state.finished(PluginError.internalInconcictency(details: nil)))
+        }
+
+        let characteristic = filteredCharacteristics[characteristicIndex]
+
+        guard characteristic.properties.contains(.write)
         else {
             return task.with(state: task.state.finished(PluginError.internalInconcictency(details: nil)))
         }
