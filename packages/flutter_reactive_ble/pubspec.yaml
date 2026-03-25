@@ -14,8 +14,6 @@ flutter:
         default_package: reactive_ble_mobile
       ios:
         default_package: reactive_ble_mobile
-      linux:
-        default_package: reactive_ble_linux
 
 dependencies:
   collection: ^1.15.0
