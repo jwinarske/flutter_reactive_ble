@@ -21,8 +21,10 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   // matching the platform interface contract.
   StreamController<ConnectionStateUpdate>? _connCtrl;
   StreamController<CharacteristicValue>? _charCtrl;
+  StreamController<BleStatus>? _statusCtrl;
   StreamSubscription<BleConnectionEvent>? _connSub;
   StreamSubscription<BleCharEvent>? _notifSub;
+  StreamSubscription<BleAdapterState>? _statusSub;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -44,12 +46,16 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     _initialized = false;
     await _connSub?.cancel();
     await _notifSub?.cancel();
+    await _statusSub?.cancel();
     await _connCtrl?.close();
     await _charCtrl?.close();
+    await _statusCtrl?.close();
     _connCtrl = null;
     _charCtrl = null;
+    _statusCtrl = null;
     _connSub = null;
     _notifSub = null;
+    _statusSub = null;
     await _ble.dispose();
   }
 
@@ -60,6 +66,16 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   void _setupEventBridge() {
     _connCtrl = StreamController<ConnectionStateUpdate>.broadcast();
     _charCtrl = StreamController<CharacteristicValue>.broadcast();
+    _statusCtrl = StreamController<BleStatus>.broadcast();
+
+    // Bridge adapter state → BleStatus
+    _statusSub = _ble.adapterStateStream.listen((s) {
+      final status = s.powered ? BleStatus.ready : BleStatus.poweredOff;
+      _logger?.log('bleStatusStream: adapter powered=${s.powered} → $status');
+      _statusCtrl?.add(status);
+    });
+    // Request initial state now that subscription is active
+    _ble.requestAdapterState();
 
     _connSub = _ble.connectionEvents.listen((e) {
       final state = switch (e.state) {
@@ -106,24 +122,10 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
 
   @override
   Stream<BleStatus> get bleStatusStream {
-    late StreamController<BleStatus> ctrl;
-    StreamSubscription<BleAdapterState>? sub;
-
-    ctrl = StreamController<BleStatus>(
-      onListen: () async {
-        await _ensureInit();
-        // Subscribe BEFORE requesting state to avoid race with broadcast stream
-        sub = _ble.adapterStateStream.listen((s) {
-          ctrl.add(s.powered ? BleStatus.ready : BleStatus.poweredOff);
-        });
-        // Now request the current state — the response will hit the subscription
-        _ble.requestAdapterState();
-      },
-      onCancel: () {
-        sub?.cancel();
-      },
-    );
-    return ctrl.stream;
+    if (_statusCtrl == null) {
+      return const Stream<BleStatus>.empty();
+    }
+    return _statusCtrl!.stream;
   }
 
   // ── Connection stream ──────────────────────────────────────────────────
