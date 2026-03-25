@@ -105,13 +105,25 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   // ── Status stream ──────────────────────────────────────────────────────
 
   @override
-  Stream<BleStatus> get bleStatusStream async* {
-    await _ensureInit();
-    // Emit initial state
-    _ble.requestAdapterState();
-    await for (final s in _ble.adapterStateStream) {
-      yield s.powered ? BleStatus.ready : BleStatus.poweredOff;
-    }
+  Stream<BleStatus> get bleStatusStream {
+    late StreamController<BleStatus> ctrl;
+    StreamSubscription<BleAdapterState>? sub;
+
+    ctrl = StreamController<BleStatus>(
+      onListen: () async {
+        await _ensureInit();
+        // Subscribe BEFORE requesting state to avoid race with broadcast stream
+        sub = _ble.adapterStateStream.listen((s) {
+          ctrl.add(s.powered ? BleStatus.ready : BleStatus.poweredOff);
+        });
+        // Now request the current state — the response will hit the subscription
+        _ble.requestAdapterState();
+      },
+      onCancel: () {
+        sub?.cancel();
+      },
+    );
+    return ctrl.stream;
   }
 
   // ── Connection stream ──────────────────────────────────────────────────
@@ -137,27 +149,38 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   // ── Scan ───────────────────────────────────────────────────────────────
 
   @override
-  Stream<ScanResult> get scanStream async* {
-    await _ensureInit();
-    _logger?.log('scanStream: subscribed to _ble.scanResults');
-    await for (final r in _ble.scanResults) {
-      _logger?.log('scanStream: got scan result ${r.address} ${r.name} rssi=${r.rssi}');
-      final mfrData = r.manufacturerCompanyId != 0xFFFF
-          ? _encodeMfrData(r.manufacturerCompanyId, r.manufacturerData)
-          : Uint8List(0);
+  Stream<ScanResult> get scanStream {
+    late StreamController<ScanResult> ctrl;
+    StreamSubscription<BleScanResult>? sub;
 
-      yield ScanResult(
-        result: Result.success(DiscoveredDevice(
-          id: r.address,
-          name: r.name,
-          rssi: r.rssi,
-          serviceUuids: r.serviceUuids.map(Uuid.parse).toList(),
-          serviceData: const {},
-          manufacturerData: mfrData,
-          connectable: Connectable.unknown,
-        )),
-      );
-    }
+    ctrl = StreamController<ScanResult>(
+      onListen: () async {
+        await _ensureInit();
+        _logger?.log('scanStream: subscribed to _ble.scanResults');
+        sub = _ble.scanResults.listen((r) {
+          _logger?.log('scanStream: got scan result ${r.address} ${r.name} rssi=${r.rssi}');
+          final mfrData = r.manufacturerCompanyId != 0xFFFF
+              ? _encodeMfrData(r.manufacturerCompanyId, r.manufacturerData)
+              : Uint8List(0);
+
+          ctrl.add(ScanResult(
+            result: Result.success(DiscoveredDevice(
+              id: r.address,
+              name: r.name,
+              rssi: r.rssi,
+              serviceUuids: r.serviceUuids.map(Uuid.parse).toList(),
+              serviceData: const {},
+              manufacturerData: mfrData,
+              connectable: Connectable.unknown,
+            )),
+          ));
+        });
+      },
+      onCancel: () {
+        sub?.cancel();
+      },
+    );
+    return ctrl.stream;
   }
 
   @override
