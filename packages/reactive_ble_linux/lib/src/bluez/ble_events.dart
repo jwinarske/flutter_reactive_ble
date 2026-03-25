@@ -5,6 +5,7 @@
 // store is the C++ malloc allocation (transferred to Dart via
 // Dart_PostCObject_DL kExternalTypedData).
 
+import 'dart:convert';
 import 'dart:typed_data';
 import 'ble_types.dart';
 
@@ -63,7 +64,7 @@ BleEvent? _decodeScanResult(Uint8List b) {
 
   final nameLen = bd.getUint16(9, Endian.little);
   if (b.length < 11 + nameLen) return null;
-  final name = String.fromCharCodes(b.sublist(11, 11 + nameLen));
+  final name = utf8.decode(b.sublist(11, 11 + nameLen));
 
   int off = 11 + nameLen;
   if (b.length < off + 3) return null;
@@ -129,7 +130,7 @@ BleEvent? _decodeCharData(Uint8List b, BleEventType type) {
   final errCode  = b[9];
   final pathLen  = bd.getUint16(10, Endian.little);
   if (b.length < 12 + pathLen + 2) return null;
-  final path     = String.fromCharCodes(b.sublist(12, 12 + pathLen));
+  final path     = utf8.decode(b.sublist(12, 12 + pathLen));
   final dataLen  = bd.getUint16(12 + pathLen, Endian.little);
   final dataOff  = 14 + pathLen;
   if (b.length < dataOff + dataLen) return null;
@@ -157,7 +158,7 @@ BleEvent? _decodeCharWrite(Uint8List b) {
   final errCode = b[9];
   final pathLen = bd.getUint16(10, Endian.little);
   if (b.length < 12 + pathLen) return null;
-  final path    = String.fromCharCodes(b.sublist(12, 12 + pathLen));
+  final path    = utf8.decode(b.sublist(12, 12 + pathLen));
 
   return BleCharDataEvent(BleCharEvent(
     eventType: BleEventType.charWrite,
@@ -174,7 +175,7 @@ BleEvent? _decodeError(Uint8List b) {
   final bd      = ByteData.sublistView(b);
   final msgLen  = bd.getUint16(1, Endian.little);
   if (b.length < 3 + msgLen) return null;
-  final message = String.fromCharCodes(b.sublist(3, 3 + msgLen));
+  final message = utf8.decode(b.sublist(3, 3 + msgLen));
   return BleErrorEvent(BleError(message));
 }
 
