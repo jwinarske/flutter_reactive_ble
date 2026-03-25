@@ -441,11 +441,6 @@ static void on_properties_changed(const std::string& obj_path,
     }
 
     if (iface == kDevice1) {
-        // Debug: log which properties changed
-        for (auto& [k, v] : changed) {
-            fprintf(stderr, "BLEDBG: Device PropertiesChanged: %s on %s\n",
-                    k.c_str(), obj_path.c_str());
-        }
         if (auto it = changed.find("Connected"); it != changed.end()) {
             bool connected = it->second.get<bool>();
             // Extract address from path: /org/bluez/hci0/dev_AA_BB_CC_DD_EE_FF
@@ -456,8 +451,6 @@ static void on_properties_changed(const std::string& obj_path,
                 for (char& c : dev) if (c == '_') c = ':';
                 uint8_t addr[6]{};
                 parse_bd_addr(dev, addr);
-                fprintf(stderr, "BLEDBG: posting connection event: %s connected=%d port=%lld\n",
-                        dev.c_str(), (int)connected, (long long)port);
                 post_connection(port, addr, connected ? 2u : 0u, 0u);
             }
         }
@@ -781,11 +774,9 @@ int bluez_ble_connect(const char* address) {
                                          svc(kBluezService), opath(path));
 
         // Subscribe to PropertiesChanged for connection state
-        fprintf(stderr, "BLEDBG: registering PropertiesChanged on %s\n", path.c_str());
         proxy->registerSignalHandler(
             ifc(kProperties), sig_name("PropertiesChanged"),
             [path](sdbus::Signal sig) {
-                fprintf(stderr, "BLEDBG: PropertiesChanged fired on %s\n", path.c_str());
                 std::string iface;
                 std::map<std::string, sdbus::Variant> changed;
                 std::vector<std::string> invalidated;
@@ -818,15 +809,12 @@ int bluez_ble_connect(const char* address) {
         // because the reply can only be delivered by the event loop thread
         // which is blocked waiting for the reply.
         std::thread([path, address = std::string(address)]() {
-            fprintf(stderr, "BLEDBG: Connect() calling on %s (separate conn)\n", path.c_str());
             try {
                 auto conn = sdbus::createSystemBusConnection();
                 auto proxy = sdbus::createProxy(*conn,
                                                  svc(kBluezService), opath(path));
                 proxy->callMethod(mem("Connect"))
                     .onInterface(ifc(kDevice1));
-                fprintf(stderr, "BLEDBG: Connect() returned OK for %s\n", path.c_str());
-
                 // Connect() returned OK. If the device was already connected,
                 // PropertiesChanged won't fire (property didn't change).
                 // Read the current state and post it explicitly.
@@ -836,12 +824,10 @@ int bluez_ble_connect(const char* address) {
                     if (port) {
                         uint8_t addr[6]{};
                         parse_bd_addr(address, addr);
-                        fprintf(stderr, "BLEDBG: posting connected (read after Connect OK) for %s\n", address.c_str());
                         post_connection(port, addr, 2u /*connected*/, 0u);
                     }
                 }
             } catch (const sdbus::Error& e) {
-                fprintf(stderr, "BLEDBG: Connect() error: %s\n", e.what());
                 if (std::string_view(e.getName()) == "org.bluez.Error.InProgress")
                     return;
                 Dart_Port port = event_port();
@@ -863,29 +849,37 @@ int bluez_ble_connect(const char* address) {
 int bluez_ble_disconnect(const char* address) {
     if (!g_state || !address) return -1;
     std::string path = device_path(address);
-    try {
-        auto proxy = sdbus::createProxy(*g_state->conn,
-                                         svc(kBluezService), opath(path));
-        proxy->callMethod(mem("Disconnect"))
-             .onInterface(ifc(kDevice1));
 
-        // Release the stored connection proxy (signal handler no longer needed)
-        {
-            std::lock_guard lock(g_state->device_proxies_mu);
-            g_state->device_proxies.erase(path);
-        }
-
-        Dart_Port port = event_port();
-        if (port) {
-            uint8_t addr[6]{};
-            parse_bd_addr(address, addr);
-            post_connection(port, addr, 3u /*disconnecting*/, 0u);
-        }
-        return 0;
-    } catch (const sdbus::Error& e) {
-        if (Dart_Port port = event_port()) post_error(port, e.what());
-        return -1;
+    // Release the stored connection proxy
+    {
+        std::lock_guard lock(g_state->device_proxies_mu);
+        g_state->device_proxies.erase(path);
     }
+
+    // Post disconnecting state immediately
+    Dart_Port port = event_port();
+    if (port) {
+        uint8_t addr[6]{};
+        parse_bd_addr(address, addr);
+        post_connection(port, addr, 3u /*disconnecting*/, 0u);
+    }
+
+    // Disconnect on a background thread using a separate connection
+    // to avoid deadlocking the main event loop.
+    std::thread([path, address = std::string(address)]() {
+        try {
+            auto conn = sdbus::createSystemBusConnection();
+            auto proxy = sdbus::createProxy(*conn,
+                                             svc(kBluezService), opath(path));
+            proxy->callMethod(mem("Disconnect"))
+                 .onInterface(ifc(kDevice1));
+        } catch (const sdbus::Error& e) {
+            // Ignore — device may already be disconnected
+            (void)e;
+        }
+    }).detach();
+
+    return 0;
 }
 
 int bluez_ble_char_read(const char* char_path, int64_t request_id) {
