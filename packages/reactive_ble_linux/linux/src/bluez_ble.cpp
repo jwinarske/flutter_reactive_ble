@@ -421,13 +421,22 @@ static void on_properties_changed(const std::string& obj_path,
     if (port == 0) return;
 
     if (iface == kAdapter1) {
-        bool powered     = false;
-        bool discovering = false;
-        if (auto p = changed.find("Powered");    p != changed.end())
-            powered     = p->second.get<bool>();
-        if (auto d = changed.find("Discovering"); d != changed.end())
-            discovering = d->second.get<bool>();
-        post_adapter_state(port, powered, discovering);
+        // Only post if Powered or Discovering actually changed
+        if (changed.count("Powered") == 0 && changed.count("Discovering") == 0)
+            return;
+
+        // Read current values from BlueZ to get a consistent snapshot,
+        // since PropertiesChanged only contains the properties that changed.
+        try {
+            auto proxy = sdbus::createProxy(*g_state->conn,
+                                             svc(kBluezService),
+                                             opath(kAdapterPath));
+            auto powered     = get_prop<bool>(*proxy, kAdapter1, "Powered");
+            auto discovering = get_prop<bool>(*proxy, kAdapter1, "Discovering");
+            post_adapter_state(port,
+                               powered.value_or(false),
+                               discovering.value_or(false));
+        } catch (...) {}
         return;
     }
 
