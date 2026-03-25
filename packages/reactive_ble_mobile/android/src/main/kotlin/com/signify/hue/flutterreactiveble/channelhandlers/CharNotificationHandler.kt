@@ -6,6 +6,7 @@ import com.signify.hue.flutterreactiveble.converters.UuidConverter
 import io.flutter.plugin.common.EventChannel
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.disposables.Disposable
+import java.util.concurrent.ConcurrentHashMap
 import com.signify.hue.flutterreactiveble.ProtobufModel as pb
 
 class CharNotificationHandler(private val bleClient: com.signify.hue.flutterreactiveble.ble.BleClient) :
@@ -16,7 +17,7 @@ class CharNotificationHandler(private val bleClient: com.signify.hue.flutterreac
     companion object {
         private var charNotificationSink: EventChannel.EventSink? = null
 
-        private val subscriptionMap = mutableMapOf<pb.CharacteristicAddress, Disposable>()
+        private val subscriptionMap: MutableMap<pb.CharacteristicAddress, Disposable> = ConcurrentHashMap()
     }
 
     override fun onListen(

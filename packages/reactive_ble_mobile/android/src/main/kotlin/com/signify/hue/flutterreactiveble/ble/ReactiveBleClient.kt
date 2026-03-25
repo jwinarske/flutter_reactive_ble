@@ -30,6 +30,7 @@ import io.reactivex.Single
 import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.subjects.BehaviorSubject
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.collections.component1
 import kotlin.collections.component2
@@ -47,14 +48,14 @@ open class ReactiveBleClient(private val context: Context) : BleClient {
 
         lateinit var rxBleClient: RxBleClient
             internal set
-        internal var activeConnections = mutableMapOf<String, DeviceConnector>()
+        internal var activeConnections: MutableMap<String, DeviceConnector> = ConcurrentHashMap()
     }
 
     override val connectionUpdateSubject: BehaviorSubject<ConnectionUpdate>
         get() = connectionUpdateBehaviorSubject
 
     override fun initializeClient() {
-        activeConnections = mutableMapOf()
+        activeConnections = ConcurrentHashMap()
         rxBleClient = RxBleClient.create(context)
     }
 
