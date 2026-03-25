@@ -9,20 +9,48 @@ import 'ffi_types.dart';
 
 // ── Library loading ────────────────────────────────────────────────────────
 
+String _packageRoot() {
+  // Walk up from this file: lib/src/bluez/bindings.dart → package root
+  var dir = File(Platform.script.toFilePath()).parent;
+  // Try to find the package by looking for the linux/lib/ directory
+  // relative to common locations
+  for (var i = 0; i < 10; i++) {
+    final candidate = File('${dir.path}/packages/reactive_ble_linux/linux/lib/libdart_bluez_ble.so');
+    if (candidate.existsSync()) return candidate.path;
+    final candidate2 = File('${dir.path}/linux/lib/libdart_bluez_ble.so');
+    if (candidate2.existsSync()) return candidate2.path;
+    dir = dir.parent;
+  }
+  return '';
+}
+
 DynamicLibrary _openLib() {
-  const candidates = [
+  // Allow explicit override via environment variable
+  final envPath = Platform.environment['BLUEZ_BLE_LIB'];
+
+  final candidates = [
+    // Explicit environment override
+    if (envPath != null) envPath,
+    // System-installed or LD_LIBRARY_PATH
     'libdart_bluez_ble.so',
+    // Built in-tree (CMake output), resolved from script location
+    _packageRoot(),
+    // Common relative paths from the working directory
     './lib/libdart_bluez_ble.so',
     './libdart_bluez_ble.so',
+    'packages/reactive_ble_linux/linux/lib/libdart_bluez_ble.so',
+    '../packages/reactive_ble_linux/linux/lib/libdart_bluez_ble.so',
   ];
   for (final path in candidates) {
+    if (path.isEmpty) continue;
     try {
       return DynamicLibrary.open(path);
     } catch (_) {}
   }
   throw UnsupportedError(
     'Could not open libdart_bluez_ble.so. '
-    'Build with: cmake -B build && cmake --build build  (or  make)',
+    'Build with: cd packages/reactive_ble_linux/linux && '
+    'cmake -B build -G Ninja && cmake --build build',
   );
 }
 
