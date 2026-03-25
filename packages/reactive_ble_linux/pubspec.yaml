@@ -1,0 +1,20 @@
+name: reactive_ble_linux
+description: >
+  Linux platform implementation of flutter_reactive_ble using BlueZ via
+  native FFI + sdbus-cpp v2. Zero-copy Dart ↔ C++ bridge with SPSC ring
+  for high-frequency notifications.
+
+version: 5.4.1
+homepage: https://github.com/PhilipsHue/flutter_reactive_ble
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  ffi: ^2.1.0
+  reactive_ble_platform_interface:
+    path: ../reactive_ble_platform_interface
+
+dev_dependencies:
+  lints: ^3.0.0
+  test: ^1.24.0
