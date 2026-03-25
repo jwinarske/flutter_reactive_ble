@@ -774,9 +774,11 @@ int bluez_ble_connect(const char* address) {
                                          svc(kBluezService), opath(path));
 
         // Subscribe to PropertiesChanged for connection state
+        fprintf(stderr, "BLEDBG: registering PropertiesChanged on %s\n", path.c_str());
         proxy->registerSignalHandler(
             ifc(kProperties), sig_name("PropertiesChanged"),
             [path](sdbus::Signal sig) {
+                fprintf(stderr, "BLEDBG: PropertiesChanged fired on %s\n", path.c_str());
                 std::string iface;
                 std::map<std::string, sdbus::Variant> changed;
                 std::vector<std::string> invalidated;
@@ -800,28 +802,37 @@ int bluez_ble_connect(const char* address) {
             }
         }
 
-        // Connect asynchronously on a background thread so the Dart
-        // isolate isn't blocked. The synchronous Connect() D-Bus method
-        // blocks until connected or failed (up to ~30s). Connection
-        // state is reported via PropertiesChanged signal handler.
-        std::thread([path, address = std::string(address)]() {
-            try {
-                std::lock_guard lock(g_state->device_proxies_mu);
-                auto it = g_state->device_proxies.find(path);
-                if (it == g_state->device_proxies.end()) return;
-                it->second->callMethod(mem("Connect"))
-                    .onInterface(ifc(kDevice1));
-            } catch (const sdbus::Error& e) {
-                if (std::string_view(e.getName()) == "org.bluez.Error.InProgress")
-                    return;
-                Dart_Port port = event_port();
-                if (!port) return;
-                uint8_t addr[6]{};
-                parse_bd_addr(address, addr);
-                post_connection(port, addr, 0u /*disconnected*/, 1u /*error*/);
-                post_error(port, e.what());
-            }
-        }).detach();
+        // Connect on a background thread so the Dart isolate isn't blocked.
+        // Do NOT hold device_proxies_mu during the blocking Connect() call —
+        // it would prevent the PropertiesChanged signal handler from running.
+        sdbus::IProxy* raw_proxy = nullptr;
+        {
+            std::lock_guard lock(g_state->device_proxies_mu);
+            auto it = g_state->device_proxies.find(path);
+            if (it != g_state->device_proxies.end())
+                raw_proxy = it->second.get();
+        }
+
+        if (raw_proxy) {
+            std::thread([raw_proxy, path, address = std::string(address)]() {
+                fprintf(stderr, "BLEDBG: Connect() calling on %s\n", path.c_str());
+                try {
+                    raw_proxy->callMethod(mem("Connect"))
+                        .onInterface(ifc(kDevice1));
+                    fprintf(stderr, "BLEDBG: Connect() returned OK for %s\n", path.c_str());
+                } catch (const sdbus::Error& e) {
+                    fprintf(stderr, "BLEDBG: Connect() error: %s\n", e.what());
+                    if (std::string_view(e.getName()) == "org.bluez.Error.InProgress")
+                        return;
+                    Dart_Port port = event_port();
+                    if (!port) return;
+                    uint8_t addr[6]{};
+                    parse_bd_addr(address, addr);
+                    post_connection(port, addr, 0u /*disconnected*/, 1u /*error*/);
+                    post_error(port, e.what());
+                }
+            }).detach();
+        }
 
         return 0;
     } catch (const sdbus::Error& e) {
