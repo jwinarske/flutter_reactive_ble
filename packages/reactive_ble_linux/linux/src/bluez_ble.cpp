@@ -11,7 +11,10 @@
 //
 // Follows patterns from:
 //   jwinarske/native_comms     — zero-copy FFI bridge, dart_api_dl
-//   jwinarske/sdbus-cpp-examples — sdbus-cpp v2 proxy usage
+//   https://github.com/jwinarske/sdbus-cpp-examples/
+//     — sdbus-cpp v2 proxy creation, strong-typed ServiceName/ObjectPath,
+//       async method calls, PropertiesChanged signal subscription,
+//       GetManagedObjects enumeration
 
 #include "../include/bluez_ble.h"
 #include "../include/dart_api_dl.h"
@@ -46,6 +49,15 @@ static constexpr std::string_view kDevice1         = "org.bluez.Device1";
 static constexpr std::string_view kGattChar1       = "org.bluez.GattCharacteristic1";
 
 static constexpr char kVersion[] = "dart_bluez_ble v1.0 (C++23, sdbus-cpp v2, dart_api_dl 2.x)";
+
+// sdbus-cpp v2.1+ strong-typedef helpers
+static inline sdbus::ServiceName svc(std::string_view s) { return sdbus::ServiceName{std::string(s)}; }
+static inline sdbus::ObjectPath  opath(std::string_view s) { return sdbus::ObjectPath{std::string(s)}; }
+static inline sdbus::ObjectPath  opath(const std::string& s) { return sdbus::ObjectPath{s}; }
+static inline sdbus::InterfaceName ifc(std::string_view s) { return sdbus::InterfaceName{std::string(s)}; }
+static inline sdbus::MemberName  mem(std::string_view s) { return sdbus::MemberName{std::string(s)}; }
+static inline sdbus::SignalName  sig_name(std::string_view s) { return sdbus::SignalName{std::string(s)}; }
+static inline sdbus::PropertyName prop_name(std::string_view s) { return sdbus::PropertyName{std::string(s)}; }
 
 // ── SPSC Ring — one-reader / one-writer, lock-free ─────────────────────────
 //   Same cache-line separation strategy as native_comms SPSCRing.
@@ -366,8 +378,8 @@ static std::optional<T> get_prop(sdbus::IProxy& proxy,
                                   std::string_view iface,
                                   std::string_view prop) noexcept {
     try {
-        return proxy.getProperty(std::string(prop))
-                    .onInterface(std::string(iface))
+        return proxy.getProperty(prop_name(prop))
+                    .onInterface(ifc(iface))
                     .template get<T>();
     } catch (...) {
         return std::nullopt;
@@ -381,11 +393,11 @@ using ObjMap = std::map<sdbus::ObjectPath,
 
 static ObjMap get_managed_objects() {
     auto proxy = sdbus::createProxy(*g_state->conn,
-                                     std::string(kBluezService),
-                                     std::string(kObjectRoot));
+                                     svc(kBluezService),
+                                     opath(kObjectRoot));
     ObjMap result;
-    proxy->callMethod("GetManagedObjects")
-         .onInterface(std::string(kObjectManager))
+    proxy->callMethod(mem("GetManagedObjects"))
+         .onInterface(ifc(kObjectManager))
          .storeResultsTo(result);
     return result;
 }
@@ -446,7 +458,7 @@ int bluez_ble_init(void* dart_api_dl_data) {
                     // the blocking form in a way that respects stop_token.
                     // Instead: use processPendingRequest in a poll loop.
                     while (!st.stop_requested()) {
-                        g_state->conn->processPendingRequest();
+                        g_state->conn->processPendingEvent();
                     }
                 } catch (const sdbus::Error& e) {
                     Dart_Port port = event_port();
@@ -488,8 +500,8 @@ int bluez_ble_adapter_state(void) {
     if (!port) return -1;
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService),
-                                         std::string(kAdapterPath));
+                                         svc(kBluezService),
+                                         opath(kAdapterPath));
         auto powered     = get_prop<bool>(*proxy, kAdapter1, "Powered");
         auto discovering = get_prop<bool>(*proxy, kAdapter1, "Discovering");
         post_adapter_state(port,
@@ -506,16 +518,16 @@ int bluez_ble_start_scan(const char** filter_uuids, uint32_t timeout_ms) {
     if (!g_state) return -1;
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService),
-                                         std::string(kAdapterPath));
+                                         svc(kBluezService),
+                                         opath(kAdapterPath));
 
         // Subscribe to InterfacesAdded for new devices
         auto obj_proxy = sdbus::createProxy(*g_state->conn,
-                                             std::string(kBluezService),
-                                             std::string(kObjectRoot));
+                                             svc(kBluezService),
+                                             opath(kObjectRoot));
         obj_proxy->registerSignalHandler(
-            std::string(kObjectManager), "InterfacesAdded",
-            [](sdbus::Signal& sig) {
+            ifc(kObjectManager), sig_name("InterfacesAdded"),
+            [](sdbus::Signal sig) {
                 sdbus::ObjectPath path;
                 std::map<std::string, std::map<std::string, sdbus::Variant>> ifaces;
                 sig >> path >> ifaces;
@@ -568,19 +580,19 @@ int bluez_ble_start_scan(const char** filter_uuids, uint32_t timeout_ms) {
                 post_scan_result(port, addr, rssi, addr_random,
                                  name, mfr_data, mfr_company, uuids);
             });
-        obj_proxy->finishRegistration();
+        // finishRegistration removed in sdbus-cpp v2.1+
 
         // Also subscribe to PropertiesChanged on the adapter for RSSI updates
         proxy->registerSignalHandler(
-            std::string(kProperties), "PropertiesChanged",
-            [path = std::string(kAdapterPath)](sdbus::Signal& sig) {
+            ifc(kProperties), sig_name("PropertiesChanged"),
+            [path = std::string(kAdapterPath)](sdbus::Signal sig) {
                 std::string iface;
                 std::map<std::string, sdbus::Variant> changed;
                 std::vector<std::string> invalidated;
                 sig >> iface >> changed >> invalidated;
                 on_properties_changed(path, iface, changed, invalidated);
             });
-        proxy->finishRegistration();
+        // finishRegistration removed in sdbus-cpp v2.1+
 
         // Set discovery filter if UUIDs requested
         if (filter_uuids && *filter_uuids) {
@@ -590,13 +602,13 @@ int bluez_ble_start_scan(const char** filter_uuids, uint32_t timeout_ms) {
                 uuids.emplace_back(*u);
             filter.emplace("UUIDs",      sdbus::Variant(uuids));
             filter.emplace("Transport",  sdbus::Variant(std::string("le")));
-            proxy->callMethod("SetDiscoveryFilter")
-                 .onInterface(std::string(kAdapter1))
+            proxy->callMethod(mem("SetDiscoveryFilter"))
+                 .onInterface(ifc(kAdapter1))
                  .withArguments(filter);
         }
 
-        proxy->callMethod("StartDiscovery")
-             .onInterface(std::string(kAdapter1));
+        proxy->callMethod(mem("StartDiscovery"))
+             .onInterface(ifc(kAdapter1));
 
         // Auto-stop after timeout_ms if non-zero
         if (timeout_ms > 0) {
@@ -618,10 +630,10 @@ int bluez_ble_stop_scan(void) {
     if (!g_state) return -1;
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService),
-                                         std::string(kAdapterPath));
-        proxy->callMethod("StopDiscovery")
-             .onInterface(std::string(kAdapter1));
+                                         svc(kBluezService),
+                                         opath(kAdapterPath));
+        proxy->callMethod(mem("StopDiscovery"))
+             .onInterface(ifc(kAdapter1));
         return 0;
     } catch (const sdbus::Error& e) {
         Dart_Port port = event_port();
@@ -644,25 +656,25 @@ int bluez_ble_connect(const char* address) {
     std::string path = device_path(address);
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService), path);
+                                         svc(kBluezService), opath(path));
 
         // Subscribe to PropertiesChanged for connection state
         proxy->registerSignalHandler(
-            std::string(kProperties), "PropertiesChanged",
-            [path](sdbus::Signal& sig) {
+            ifc(kProperties), sig_name("PropertiesChanged"),
+            [path](sdbus::Signal sig) {
                 std::string iface;
                 std::map<std::string, sdbus::Variant> changed;
                 std::vector<std::string> invalidated;
                 sig >> iface >> changed >> invalidated;
                 on_properties_changed(path, iface, changed, invalidated);
             });
-        proxy->finishRegistration();
+        // finishRegistration removed in sdbus-cpp v2.1+
 
         // Async connect
-        proxy->callMethodAsync("Connect")
-             .onInterface(std::string(kDevice1))
+        proxy->callMethodAsync(mem("Connect"))
+             .onInterface(ifc(kDevice1))
              .uponReplyInvoke([path, address = std::string(address)]
-                              (const sdbus::Error* err) {
+                              (std::optional<sdbus::Error> err) {
                  Dart_Port port = event_port();
                  if (!port) return;
                  uint8_t addr[6]{};
@@ -693,9 +705,9 @@ int bluez_ble_disconnect(const char* address) {
     std::string path = device_path(address);
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService), path);
-        proxy->callMethod("Disconnect")
-             .onInterface(std::string(kDevice1));
+                                         svc(kBluezService), opath(path));
+        proxy->callMethod(mem("Disconnect"))
+             .onInterface(ifc(kDevice1));
 
         Dart_Port port = event_port();
         if (port) {
@@ -715,12 +727,12 @@ int bluez_ble_char_read(const char* char_path, int64_t request_id) {
     std::string path(char_path);
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService), path);
+                                         svc(kBluezService), opath(path));
         std::map<std::string, sdbus::Variant> options;
-        proxy->callMethodAsync("ReadValue")
-             .onInterface(std::string(kGattChar1))
+        proxy->callMethodAsync(mem("ReadValue"))
+             .onInterface(ifc(kGattChar1))
              .withArguments(options)
-             .uponReplyInvoke([path, request_id](const sdbus::Error* err,
+             .uponReplyInvoke([path, request_id](std::optional<sdbus::Error> err,
                                                   const std::vector<uint8_t>& val) {
                  Dart_Port port = event_port();
                  if (!port) return;
@@ -748,12 +760,12 @@ int bluez_ble_char_write(const char* char_path, const uint8_t* data,
     std::vector<uint8_t> payload(data, data + len);
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService), path);
+                                         svc(kBluezService), opath(path));
         std::map<std::string, sdbus::Variant> options;
-        proxy->callMethodAsync("WriteValue")
-             .onInterface(std::string(kGattChar1))
+        proxy->callMethodAsync(mem("WriteValue"))
+             .onInterface(ifc(kGattChar1))
              .withArguments(payload, options)
-             .uponReplyInvoke([path, request_id](const sdbus::Error* err) {
+             .uponReplyInvoke([path, request_id](std::optional<sdbus::Error> err) {
                  Dart_Port port = event_port();
                  if (!port) return;
                  post_char_write_ack(port, request_id,
@@ -772,13 +784,13 @@ int bluez_ble_char_write_no_response(const char* char_path,
     if (!g_state || !char_path || !data) return -1;
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService),
-                                         std::string(char_path));
+                                         svc(kBluezService),
+                                         opath(std::string_view(char_path)));
         std::vector<uint8_t> payload(data, data + len);
         std::map<std::string, sdbus::Variant> options;
         options.emplace("type", sdbus::Variant(std::string("command")));
-        proxy->callMethod("WriteValue")
-             .onInterface(std::string(kGattChar1))
+        proxy->callMethod(mem("WriteValue"))
+             .onInterface(ifc(kGattChar1))
              .withArguments(payload, options);
         return 0;
     } catch (...) { return -1; }
@@ -793,12 +805,12 @@ int bluez_ble_char_subscribe(const char* char_path) {
 
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService), path);
+                                         svc(kBluezService), opath(path));
 
         // Listen for PropertiesChanged to get Value updates
         proxy->registerSignalHandler(
-            std::string(kProperties), "PropertiesChanged",
-            [path](sdbus::Signal& sig) {
+            ifc(kProperties), sig_name("PropertiesChanged"),
+            [path](sdbus::Signal sig) {
                 std::string iface;
                 std::map<std::string, sdbus::Variant> changed;
                 std::vector<std::string> invalidated;
@@ -813,10 +825,10 @@ int bluez_ble_char_subscribe(const char* char_path) {
                     dispatch_notify(path, std::span(val));
                 } catch (...) {}
             });
-        proxy->finishRegistration();
+        // finishRegistration removed in sdbus-cpp v2.1+
 
-        proxy->callMethod("StartNotify")
-             .onInterface(std::string(kGattChar1));
+        proxy->callMethod(mem("StartNotify"))
+             .onInterface(ifc(kGattChar1));
 
         g_state->char_proxies.emplace(path, std::move(proxy));
         return 0;
@@ -835,8 +847,8 @@ int bluez_ble_char_unsubscribe(const char* char_path) {
     if (it == g_state->char_proxies.end()) return 0;
 
     try {
-        it->second->callMethod("StopNotify")
-                  .onInterface(std::string(kGattChar1));
+        it->second->callMethod(mem("StopNotify"))
+                  .onInterface(ifc(kGattChar1));
     } catch (...) {}
     g_state->char_proxies.erase(it);
     return 0;
@@ -944,8 +956,8 @@ int bluez_ble_get_char_info(const char*  char_path,
 
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService),
-                                         std::string(char_path));
+                                         svc(kBluezService),
+                                         opath(std::string_view(char_path)));
 
         // UUID
         if (out_uuid) {
@@ -961,7 +973,7 @@ int bluez_ble_get_char_info(const char*  char_path,
 
                 if (out_service_uuid) {
                     auto svcProxy = sdbus::createProxy(*g_state->conn,
-                                                        std::string(kBluezService),
+                                                        svc(kBluezService),
                                                         *svcPath);
                     auto svcUuid = get_prop<std::string>(
                         *svcProxy, "org.bluez.GattService1", "UUID");
@@ -997,7 +1009,7 @@ int bluez_ble_wait_services_resolved(const char* address, uint32_t timeout_ms) {
     auto check = [&]() -> bool {
         try {
             auto proxy = sdbus::createProxy(*g_state->conn,
-                                             std::string(kBluezService), path);
+                                             svc(kBluezService), opath(path));
             auto v = get_prop<bool>(*proxy, kDevice1, "ServicesResolved");
             return v.value_or(false);
         } catch (...) { return false; }
@@ -1022,11 +1034,11 @@ int bluez_ble_adapter_set_powered(int powered) {
     if (!g_state) return -1;
     try {
         auto proxy = sdbus::createProxy(*g_state->conn,
-                                         std::string(kBluezService),
-                                         std::string(kAdapterPath));
+                                         svc(kBluezService),
+                                         opath(kAdapterPath));
         sdbus::Variant val(powered != 0);
-        proxy->callMethod("Set")
-             .onInterface(std::string(kProperties))
+        proxy->callMethod(mem("Set"))
+             .onInterface(ifc(kProperties))
              .withArguments(std::string(kAdapter1),
                             std::string("Powered"), val);
         return 0;

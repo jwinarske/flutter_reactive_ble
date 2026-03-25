@@ -21,6 +21,7 @@ if(NOT SDBUS_FOUND)
   set(SDBUSCPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   set(SDBUSCPP_BUILD_DOCS OFF CACHE BOOL "" FORCE)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE BOOL "" FORCE)
   add_subdirectory(third_party/sdbus-cpp EXCLUDE_FROM_ALL)
   # Create an alias target matching the PkgConfig target name
   if(NOT TARGET PkgConfig::SDBUS)
