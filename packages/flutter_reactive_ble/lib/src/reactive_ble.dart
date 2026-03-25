@@ -79,9 +79,11 @@ class FlutterReactiveBle {
 
   Stream<BleStatus> get _statusStream => _blePlatform.bleStatusStream;
 
+  StreamSubscription<BleStatus>? _statusSubscription;
+
   Future<void> _trackStatus() async {
     await initialize();
-    _statusStream.listen((status) => _status = status);
+    _statusSubscription = _statusStream.listen((status) => _status = status);
   }
 
   Future<void>? _initialization;
@@ -143,6 +145,8 @@ class FlutterReactiveBle {
   Future<void> deinitialize() async {
     if (_initialization != null) {
       _initialization = null;
+      await _statusSubscription?.cancel();
+      _statusSubscription = null;
       await _disconnectionUpdates?.cancel();
       _disconnectionUpdates = null;
       await _blePlatform.deinitialize();
