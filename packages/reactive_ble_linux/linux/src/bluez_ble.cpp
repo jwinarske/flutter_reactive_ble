@@ -327,6 +327,10 @@ struct BleState {
     std::mutex                              pending_mu;
     std::unordered_map<int64_t, std::string> pending_char_path;
 
+    // Scan proxies — must outlive bluez_ble_start_scan so signal handlers stay alive
+    std::unique_ptr<sdbus::IProxy> scan_obj_proxy;     // InterfacesAdded
+    std::unique_ptr<sdbus::IProxy> scan_adapter_proxy;  // PropertiesChanged on adapter
+
     std::atomic<bool> running{false};
 };
 
@@ -517,15 +521,17 @@ int bluez_ble_adapter_state(void) {
 int bluez_ble_start_scan(const char** filter_uuids, uint32_t timeout_ms) {
     if (!g_state) return -1;
     try {
-        auto proxy = sdbus::createProxy(*g_state->conn,
+        // Store proxies in g_state so signal handlers survive this function
+        g_state->scan_adapter_proxy = sdbus::createProxy(*g_state->conn,
                                          svc(kBluezService),
                                          opath(kAdapterPath));
+        auto& proxy = g_state->scan_adapter_proxy;
 
         // Subscribe to InterfacesAdded for new devices
-        auto obj_proxy = sdbus::createProxy(*g_state->conn,
+        g_state->scan_obj_proxy = sdbus::createProxy(*g_state->conn,
                                              svc(kBluezService),
                                              opath(kObjectRoot));
-        obj_proxy->registerSignalHandler(
+        g_state->scan_obj_proxy->registerSignalHandler(
             ifc(kObjectManager), sig_name("InterfacesAdded"),
             [](sdbus::Signal sig) {
                 sdbus::ObjectPath path;
@@ -634,6 +640,11 @@ int bluez_ble_stop_scan(void) {
                                          opath(kAdapterPath));
         proxy->callMethod(mem("StopDiscovery"))
              .onInterface(ifc(kAdapter1));
+
+        // Release scan signal handlers
+        g_state->scan_obj_proxy.reset();
+        g_state->scan_adapter_proxy.reset();
+
         return 0;
     } catch (const sdbus::Error& e) {
         Dart_Port port = event_port();
