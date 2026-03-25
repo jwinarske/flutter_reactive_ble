@@ -9,7 +9,6 @@
 
 import 'dart:async';
 import 'dart:ffi';
-import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
@@ -100,14 +99,9 @@ final class BleNotifRingChannel {
         final data = outData.value;
         final path = outPath.value;
 
-        // Zero-copy typed-data view over the C malloc allocation.
-        // A NativeFinalizer on the Uint8List will call bluez_ble_free()
-        // when the Dart GC collects it.
-        final view = data.asTypedList(
-          len,
-          finalizer: _bleFreeFinalizer,
-          token: data.cast<Void>(),
-        );
+        // Copy data to a Dart-owned Uint8List and free the C allocation.
+        final view = Uint8List.fromList(data.asTypedList(len));
+        bluezBleFree(data.cast<Void>());
 
         final charPath = path != nullptr
             ? path.cast<Utf8>().toDartString()
@@ -131,14 +125,3 @@ final class BleNotifRingChannel {
   }
 }
 
-// ── NativeFinalizer for ring-popped buffers ────────────────────────────────
-// Mirrors native_comms NativeFinalizer → comms_free_frame_data pattern.
-
-late final _bleFreeFinalizer = () {
-  // Look up the free symbol directly so the finalizer token is the raw ptr.
-  // bluezBleFree is just ::free() on the C side.
-  final freePtr = DynamicLibrary.process()
-      .lookup<NativeFunction<Void Function(Pointer<Void>)>>(
-          'bluez_ble_free');
-  return NativeFinalizer(freePtr);
-}();

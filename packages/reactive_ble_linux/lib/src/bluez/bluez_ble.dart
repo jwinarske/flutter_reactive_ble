@@ -137,29 +137,29 @@ final class BluezBle implements BleConnectionSource {
 
   /// Stream of adapter power / discovery state changes.
   Stream<BleAdapterState> get adapterStateStream => events
-      .whereType<BleAdapterStateEvent>()
-      .map((e) => e.state);
+      .where((e) => e is BleAdapterStateEvent)
+      .map((e) => (e as BleAdapterStateEvent).state);
 
   /// Stream of scan results (one per advertisement packet received).
   Stream<BleScanResult> get scanResults => events
-      .whereType<BleScanResultEvent>()
-      .map((e) => e.result);
+      .where((e) => e is BleScanResultEvent)
+      .map((e) => (e as BleScanResultEvent).result);
 
   /// Stream of device connection state changes.
   Stream<BleConnectionEvent> get connectionEvents => events
-      .whereType<BleConnectionEvent2>()
-      .map((e) => e.event);
+      .where((e) => e is BleConnectionEvent2)
+      .map((e) => (e as BleConnectionEvent2).event);
 
   /// Stream of unsolicited GATT notifications (subscribeToCharacteristic).
   Stream<BleCharEvent> get characteristicNotifications => events
-      .whereType<BleCharDataEvent>()
-      .map((e) => e.event)
+      .where((e) => e is BleCharDataEvent)
+      .map((e) => (e as BleCharDataEvent).event)
       .where((e) => e.eventType == BleEventType.charNotify);
 
   /// Stream of C++ error messages.
   Stream<BleError> get errors => events
-      .whereType<BleErrorEvent>()
-      .map((e) => e.error);
+      .where((e) => e is BleErrorEvent)
+      .map((e) => (e as BleErrorEvent).error);
 
   // ── Adapter ───────────────────────────────────────────────────────────────
 
@@ -490,7 +490,7 @@ final class BluezBle implements BleConnectionSource {
   Stream<Uint8List> characteristicValueStream(String charPath) {
     _assertInitialized();
     late StreamController<Uint8List> ctrl;
-    late StreamSubscription<BleCharEvent> sub;
+    late StreamSubscription<Uint8List> sub;
 
     ctrl = StreamController<Uint8List>(
       onListen: () {

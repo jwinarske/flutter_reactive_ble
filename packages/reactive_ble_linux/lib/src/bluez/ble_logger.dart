@@ -77,7 +77,7 @@ abstract final class BleLogger {
     Object? error,
     StackTrace? stackTrace,
   }) {
-    if (level < minimumLevel) return;
+    if (level.index < minimumLevel.index) return;
     final record = BleLogRecord(
       level:      level,
       tag:        tag,
