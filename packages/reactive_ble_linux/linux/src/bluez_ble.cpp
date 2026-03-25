@@ -826,6 +826,20 @@ int bluez_ble_connect(const char* address) {
                 proxy->callMethod(mem("Connect"))
                     .onInterface(ifc(kDevice1));
                 fprintf(stderr, "BLEDBG: Connect() returned OK for %s\n", path.c_str());
+
+                // Connect() returned OK. If the device was already connected,
+                // PropertiesChanged won't fire (property didn't change).
+                // Read the current state and post it explicitly.
+                auto connected = get_prop<bool>(*proxy, kDevice1, "Connected");
+                if (connected.value_or(false)) {
+                    Dart_Port port = event_port();
+                    if (port) {
+                        uint8_t addr[6]{};
+                        parse_bd_addr(address, addr);
+                        fprintf(stderr, "BLEDBG: posting connected (read after Connect OK) for %s\n", address.c_str());
+                        post_connection(port, addr, 2u /*connected*/, 0u);
+                    }
+                }
             } catch (const sdbus::Error& e) {
                 fprintf(stderr, "BLEDBG: Connect() error: %s\n", e.what());
                 if (std::string_view(e.getName()) == "org.bluez.Error.InProgress")
