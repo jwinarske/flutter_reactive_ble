@@ -184,6 +184,7 @@ final class BluezBle implements BleConnectionSource {
     int timeoutMs = 0,
   }) async {
     _assertInitialized();
+    BleLogger.i('scan', 'startScan(filterUuids=$filterUuids, timeoutMs=$timeoutMs)');
 
     return using((arena) {
       Pointer<Pointer<Char>> uuidPtrs;
@@ -196,7 +197,9 @@ final class BluezBle implements BleConnectionSource {
         }
         uuidPtrs[filterUuids.length] = nullptr;
       }
-      return bluezBleStartScan(uuidPtrs, timeoutMs);
+      final rc = bluezBleStartScan(uuidPtrs, timeoutMs);
+      BleLogger.i('scan', 'bluezBleStartScan returned $rc');
+      return rc;
     });
   }
 
@@ -533,14 +536,27 @@ final class BluezBle implements BleConnectionSource {
   // ── Internal message handler ──────────────────────────────────────────────
 
   void _onNativeMessage(dynamic message) {
-    if (_eventCtrl == null || _eventCtrl!.isClosed) return;
+    if (_eventCtrl == null || _eventCtrl!.isClosed) {
+      BleLogger.w('event', '_onNativeMessage: eventCtrl is null or closed, dropping');
+      return;
+    }
 
     // Channel B: C++ posts Uint8List (kExternalTypedData).
     // The backing store IS the C++ malloc allocation — zero copy.
-    if (message is! Uint8List) return;
+    if (message is! Uint8List) {
+      BleLogger.w('event', '_onNativeMessage: non-Uint8List message: ${message.runtimeType}');
+      return;
+    }
+
+    BleLogger.d('event', '_onNativeMessage: received ${message.length} bytes, type=0x${message.isNotEmpty ? message[0].toRadixString(16) : "empty"}');
 
     final event = decodeBleEvent(message);
-    if (event == null) return;
+    if (event == null) {
+      BleLogger.w('event', '_onNativeMessage: decodeBleEvent returned null for ${message.length} bytes');
+      return;
+    }
+
+    BleLogger.d('event', '_onNativeMessage: decoded ${event.runtimeType}');
 
     // Invalidate GATT cache on disconnect
     if (event is BleConnectionEvent2) {

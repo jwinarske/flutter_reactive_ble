@@ -30,9 +30,11 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   Future<void> initialize() async {
     if (_initialized) return;
     _logger?.log('Initialize BLE Linux platform');
+    BleLogger.minimumLevel = BleLogLevel.debug;
     await _ble.initialize();
     _initialized = true;
     _setupEventBridge();
+    _logger?.log('Initialize BLE Linux platform: done, event bridge set up');
   }
 
   @override
@@ -137,7 +139,9 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   @override
   Stream<ScanResult> get scanStream async* {
     await _ensureInit();
+    _logger?.log('scanStream: subscribed to _ble.scanResults');
     await for (final r in _ble.scanResults) {
+      _logger?.log('scanStream: got scan result ${r.address} ${r.name} rssi=${r.rssi}');
       final mfrData = r.manufacturerCompanyId != 0xFFFF
           ? _encodeMfrData(r.manufacturerCompanyId, r.manufacturerData)
           : Uint8List(0);
@@ -171,7 +175,9 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   Future<void> _startScan(List<Uuid> withServices) async {
     await _ensureInit();
     final uuids = withServices.map((u) => u.toString()).toList();
-    await _ble.startScan(filterUuids: uuids);
+    _logger?.log('_startScan: calling _ble.startScan(filterUuids=$uuids)');
+    final rc = await _ble.startScan(filterUuids: uuids);
+    _logger?.log('_startScan: startScan returned $rc');
   }
 
   // ── Connect / Disconnect ───────────────────────────────────────────────
