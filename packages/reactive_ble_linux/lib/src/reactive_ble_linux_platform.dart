@@ -236,12 +236,12 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   Future<void> _connectAndDiscover(
       String id, Duration? connectionTimeout) async {
     await _ensureInit();
-    // Stop scanning before connecting — BlueZ can't reliably do both
-    _ble.stopScan();
-    // Trigger the connection — state changes flow through _connCtrl
-    // and are consumed by DeviceConnectorImpl's specificConnectedDeviceStream.
-    // We do NOT await connected here to avoid consuming the event.
+    // Trigger the connection first — BlueZ needs the device object to exist.
+    // Stopping scan before connect removes ephemeral devices from BlueZ's
+    // cache, causing "UnknownObject" errors.
     _ble.connectToDevice(id);
+    // Now stop scanning — the device is held by the pending Connect() call.
+    _ble.stopScan();
   }
 
   @override
