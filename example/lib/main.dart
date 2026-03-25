@@ -59,24 +59,20 @@ void main() {
           ),
         ),
       ],
-      child: Consumer<BleStatus?>(
-        builder: (_, status, __) {
-          if (status == BleStatus.ready) {
-            return MaterialApp(
-              title: 'Flutter Reactive BLE example',
-              color: _themeColor,
-              theme: ThemeData(primarySwatch: _themeColor),
-              home: const HomeScreen(),
-            );
-          } else {
-            return MaterialApp(
-              title: 'Flutter Reactive BLE example',
-              color: _themeColor,
-              theme: ThemeData(primarySwatch: _themeColor),
-              home: BleStatusScreen(status: status ?? BleStatus.unknown),
-            );
-          }
-        },
+      child: MaterialApp(
+        title: 'Flutter Reactive BLE example',
+        color: _themeColor,
+        theme: ThemeData(primarySwatch: _themeColor),
+        builder: (context, child) => Consumer<BleStatus?>(
+          builder: (_, status, __) {
+            if (status == BleStatus.ready) {
+              return child ?? const HomeScreen();
+            } else {
+              return BleStatusScreen(status: status ?? BleStatus.unknown);
+            }
+          },
+        ),
+        home: const HomeScreen(),
       ),
     ),
   );
