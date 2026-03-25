@@ -28,7 +28,7 @@ extension CharacteristicInstance {
             // Since CBCharacteristic has no field that identifies a specific instance of a characteristic (among those with the same id),
             // the index among the characteristics with the same uuid within a service is used as identification. This assumes characteristics
             // aren't reordered when new charcteristics are discovered later.
-            let characteristicIndex = service.characteristics?.filter({ c in c.uuid == characteristic.uuid }).index(of: characteristic)
+            let characteristicIndex = service.characteristics?.filter({ c in c.uuid == characteristic.uuid }).firstIndex(of: characteristic)
         else {
             throw Failure.characteristicNotFound
         }
@@ -37,7 +37,7 @@ extension CharacteristicInstance {
             // Since CBService has no field that identifies a specific instance of a service (among those with the same id),
             // the index among the services with the same uuid is used as identification. This assumes services are not reordered when
             // new services are discovered later.
-            let serviceIndex = peripheral.services?.filter({ s in s.uuid == service.uuid }).index(of: service)
+            let serviceIndex = peripheral.services?.filter({ s in s.uuid == service.uuid }).firstIndex(of: service)
         else {
             throw Failure.serviceNotFound
         }
@@ -94,12 +94,12 @@ struct CharacteristicInstanceIDFactory {
 
 public extension CBCharacteristic {
     var instanceId: Int? {
-        return service?.characteristics?.filter({ c in c.uuid == uuid }).index(of: self)
+        return service?.characteristics?.filter({ c in c.uuid == uuid }).firstIndex(of: self)
     }
 }
 
 public extension CBService {
     var instanceId: Int? {
-        return peripheral?.services?.filter({ s in s.uuid == uuid }).index(of: self)
+        return peripheral?.services?.filter({ s in s.uuid == uuid }).firstIndex(of: self)
     }
 }

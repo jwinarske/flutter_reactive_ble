@@ -80,8 +80,9 @@ final class Central {
                 )
             },
             onCharacteristicsDiscovery: papply(weak: self) { central, service, error in
+                guard let peripheral = service.peripheral else { return }
                 central.servicesWithCharacteristicsDiscoveryRegistry.updateTask(
-                    key: service.peripheral!.identifier,
+                    key: peripheral.identifier,
                     action: { $0.handleCharacteristicsDiscovery(service: service, error: error) }
                 )
             },
