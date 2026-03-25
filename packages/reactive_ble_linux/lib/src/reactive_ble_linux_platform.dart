@@ -105,8 +105,6 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
         _statusCtrl?.add(status);
       } else if (event is BleConnectionEvent2) {
         final e = event.event;
-        // ignore: avoid_print
-        print('BLELINUX: unified listener got connection: ${e.address} ${e.state} err=${e.errorCode}');
         final state = switch (e.state) {
           BleConnectionState.connecting => DeviceConnectionState.connecting,
           BleConnectionState.connected => DeviceConnectionState.connected,
@@ -115,8 +113,6 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
           BleConnectionState.disconnected =>
             DeviceConnectionState.disconnected,
         };
-        // ignore: avoid_print
-        print('BLELINUX: adding to _connCtrl: ${e.address} $state, hasListener=${_connCtrl?.hasListener}');
         _connCtrl?.add(ConnectionStateUpdate(
           deviceId: e.address,
           connectionState: state,
@@ -182,8 +178,6 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     if (_connCtrl == null) {
       return const Stream<ConnectionStateUpdate>.empty();
     }
-    // ignore: avoid_print
-    print('BLELINUX: connectionUpdateStream accessed, hasListener=${_connCtrl!.hasListener}');
     return _connCtrl!.stream;
   }
 
@@ -260,12 +254,31 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   @override
   Future<List<DiscoveredService>> discoverServices(String deviceId) async {
     await _ensureInit();
+    // Populate GATT cache if not already populated
+    if (!_ble.gattCache.isCached(deviceId)) {
+      try {
+        await _ble.waitServicesResolved(deviceId);
+        await _ble.populateGattCache(deviceId);
+      } catch (_) {
+        _ble.gattCache.populatePathsOnly(
+            deviceId, _ble.getCharacteristicPaths(deviceId));
+      }
+    }
     return _buildDiscoveredServices(deviceId);
   }
 
   @override
   Future<List<DiscoveredService>> getDiscoverServices(String deviceId) async {
     await _ensureInit();
+    if (!_ble.gattCache.isCached(deviceId)) {
+      try {
+        await _ble.waitServicesResolved(deviceId);
+        await _ble.populateGattCache(deviceId);
+      } catch (_) {
+        _ble.gattCache.populatePathsOnly(
+            deviceId, _ble.getCharacteristicPaths(deviceId));
+      }
+    }
     return _buildDiscoveredServices(deviceId);
   }
 
