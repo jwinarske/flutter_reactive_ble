@@ -4,7 +4,11 @@ import 'package:intl/intl.dart';
 class BleLogger {
   BleLogger({
     required FlutterReactiveBle ble,
-  }) : _ble = ble;
+  }) : _ble = ble {
+    _ble.statusStream.listen((status) {
+      addToLog('Adapter status: $status');
+    });
+  }
 
   final FlutterReactiveBle _ble;
   final List<String> _logMessages = [];
