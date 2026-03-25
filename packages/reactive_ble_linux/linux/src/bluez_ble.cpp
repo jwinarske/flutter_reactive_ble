@@ -645,8 +645,14 @@ int bluez_ble_start_scan(const char** filter_uuids, uint32_t timeout_ms) {
                  .withArguments(filter);
         }
 
-        proxy->callMethod(mem("StartDiscovery"))
-             .onInterface(ifc(kAdapter1));
+        try {
+            proxy->callMethod(mem("StartDiscovery"))
+                 .onInterface(ifc(kAdapter1));
+        } catch (const sdbus::Error& e) {
+            // "InProgress" means scan is already running — not an error
+            if (std::string_view(e.getName()) != "org.bluez.Error.InProgress")
+                throw;
+        }
 
         // Auto-stop after timeout_ms if non-zero
         if (timeout_ms > 0) {
@@ -672,17 +678,16 @@ int bluez_ble_stop_scan(void) {
                                          opath(kAdapterPath));
         proxy->callMethod(mem("StopDiscovery"))
              .onInterface(ifc(kAdapter1));
-
-        // Release scan signal handlers
-        g_state->scan_obj_proxy.reset();
-        g_state->scan_adapter_proxy.reset();
-
-        return 0;
     } catch (const sdbus::Error& e) {
-        Dart_Port port = event_port();
-        if (port) post_error(port, e.what());
-        return -1;
+        // "No discovery started" / "NotReady" are harmless — scan wasn't running
+        (void)e;
     }
+
+    // Always release scan signal handlers
+    g_state->scan_obj_proxy.reset();
+    g_state->scan_adapter_proxy.reset();
+
+    return 0;
 }
 
 // Build D-Bus object path for a device from its BD address

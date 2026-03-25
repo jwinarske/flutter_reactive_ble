@@ -22,10 +22,12 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   StreamController<ConnectionStateUpdate>? _connCtrl;
   StreamController<CharacteristicValue>? _charCtrl;
   StreamController<BleStatus>? _statusCtrl;
+  StreamController<ScanResult>? _scanCtrl;
   BleStatus _lastStatus = BleStatus.unknown;
   StreamSubscription<BleConnectionEvent>? _connSub;
   StreamSubscription<BleCharEvent>? _notifSub;
   StreamSubscription<BleEvent>? _statusSub;
+  StreamSubscription<BleScanResult>? _scanSub;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -48,15 +50,19 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     await _connSub?.cancel();
     await _notifSub?.cancel();
     await _statusSub?.cancel();
+    await _scanSub?.cancel();
     await _connCtrl?.close();
     await _charCtrl?.close();
     await _statusCtrl?.close();
+    await _scanCtrl?.close();
     _connCtrl = null;
     _charCtrl = null;
     _statusCtrl = null;
+    _scanCtrl = null;
     _connSub = null;
     _notifSub = null;
     _statusSub = null;
+    _scanSub = null;
     await _ble.dispose();
   }
 
@@ -68,6 +74,26 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     _connCtrl = StreamController<ConnectionStateUpdate>.broadcast();
     _charCtrl = StreamController<CharacteristicValue>.broadcast();
     _statusCtrl = StreamController<BleStatus>.broadcast();
+    _scanCtrl = StreamController<ScanResult>.broadcast();
+
+    // Bridge scan results eagerly so they're available before scanForDevices fires
+    _scanSub = _ble.scanResults.listen((r) {
+      final mfrData = r.manufacturerCompanyId != 0xFFFF
+          ? _encodeMfrData(r.manufacturerCompanyId, r.manufacturerData)
+          : Uint8List(0);
+
+      _scanCtrl?.add(ScanResult(
+        result: Result.success(DiscoveredDevice(
+          id: r.address,
+          name: r.name,
+          rssi: r.rssi,
+          serviceUuids: r.serviceUuids.map(Uuid.parse).toList(),
+          serviceData: const {},
+          manufacturerData: mfrData,
+          connectable: Connectable.unknown,
+        )),
+      ));
+    });
 
     // Bridge adapter state → BleStatus
     //
@@ -171,35 +197,10 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
 
   @override
   Stream<ScanResult> get scanStream {
-    late StreamController<ScanResult> ctrl;
-    StreamSubscription<BleScanResult>? sub;
-
-    ctrl = StreamController<ScanResult>(
-      onListen: () async {
-        await _ensureInit();
-        sub = _ble.scanResults.listen((r) {
-          final mfrData = r.manufacturerCompanyId != 0xFFFF
-              ? _encodeMfrData(r.manufacturerCompanyId, r.manufacturerData)
-              : Uint8List(0);
-
-          ctrl.add(ScanResult(
-            result: Result.success(DiscoveredDevice(
-              id: r.address,
-              name: r.name,
-              rssi: r.rssi,
-              serviceUuids: r.serviceUuids.map(Uuid.parse).toList(),
-              serviceData: const {},
-              manufacturerData: mfrData,
-              connectable: Connectable.unknown,
-            )),
-          ));
-        });
-      },
-      onCancel: () {
-        sub?.cancel();
-      },
-    );
-    return ctrl.stream;
+    if (_scanCtrl == null) {
+      return const Stream<ScanResult>.empty();
+    }
+    return _scanCtrl!.stream;
   }
 
   @override
