@@ -641,14 +641,16 @@ int bluez_ble_start_scan(const char** filter_uuids, uint32_t timeout_ms) {
             });
         // finishRegistration removed in sdbus-cpp v2.1+
 
-        // Set discovery filter if UUIDs requested
-        if (filter_uuids && *filter_uuids) {
+        // Always set LE transport filter; add UUID filter if specified
+        {
             std::map<std::string, sdbus::Variant> filter;
-            std::vector<std::string> uuids;
-            for (const char** u = filter_uuids; *u; ++u)
-                uuids.emplace_back(*u);
-            filter.emplace("UUIDs",      sdbus::Variant(uuids));
-            filter.emplace("Transport",  sdbus::Variant(std::string("le")));
+            filter.emplace("Transport", sdbus::Variant(std::string("le")));
+            if (filter_uuids && *filter_uuids) {
+                std::vector<std::string> uuids;
+                for (const char** u = filter_uuids; *u; ++u)
+                    uuids.emplace_back(*u);
+                filter.emplace("UUIDs", sdbus::Variant(uuids));
+            }
             proxy->callMethod(mem("SetDiscoveryFilter"))
                  .onInterface(ifc(kAdapter1))
                  .withArguments(filter);
