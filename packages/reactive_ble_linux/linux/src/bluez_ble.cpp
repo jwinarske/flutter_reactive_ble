@@ -712,20 +712,24 @@ int bluez_ble_connect(const char* address) {
                 on_properties_changed(path, iface, changed, invalidated);
             });
 
-        // Async connect
+        // Async connect — connection state changes are reported via
+        // PropertiesChanged (on_properties_changed), not the method reply.
+        // Only post an error if the Connect() D-Bus call itself fails
+        // (e.g. device not found, adapter off). Success means BlueZ
+        // accepted the request; actual Connected=true comes via signal.
         proxy->callMethodAsync(mem("Connect"))
              .onInterface(ifc(kDevice1))
              .uponReplyInvoke([path, address = std::string(address)]
                               (std::optional<sdbus::Error> err) {
+                 if (!err) return; // success — wait for PropertiesChanged
+                 // Ignore "InProgress" — a connect is already underway
+                 if (err->getName() == "org.bluez.Error.InProgress") return;
                  Dart_Port port = event_port();
                  if (!port) return;
                  uint8_t addr[6]{};
                  parse_bd_addr(address, addr);
-                 if (err) {
-                     post_connection(port, addr, 0u /*disconnected*/, 1u /*error*/);
-                 } else {
-                     post_connection(port, addr, 2u /*connected*/, 0u);
-                 }
+                 post_connection(port, addr, 0u /*disconnected*/, 1u /*error*/);
+                 post_error(port, err->what());
              });
 
         // Store proxy so signal handler and async callback survive
