@@ -143,9 +143,15 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     // a broadcast stream that doesn't buffer past events.
     final ctrl = StreamController<BleStatus>();
     ctrl.onListen = () {
+      // ignore: avoid_print
+      print('BLELINUX: bleStatusStream onListen, replaying _lastStatus=$_lastStatus');
       ctrl.add(_lastStatus);
       _statusCtrl!.stream.listen(
-        ctrl.add,
+        (s) {
+          // ignore: avoid_print
+          print('BLELINUX: bleStatusStream forwarding $s from _statusCtrl');
+          ctrl.add(s);
+        },
         onError: ctrl.addError,
         onDone: ctrl.close,
       );
