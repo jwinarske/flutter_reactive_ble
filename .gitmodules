@@ -1,0 +1,3 @@
+[submodule "packages/reactive_ble_linux/linux/third_party/sdbus-cpp"]
+	path = packages/reactive_ble_linux/linux/third_party/sdbus-cpp
+	url = https://github.com/Kistler-Group/sdbus-cpp.git

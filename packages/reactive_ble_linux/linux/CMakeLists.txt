@@ -9,10 +9,26 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # ── Dependencies ───────────────────────────────────────────────────────────
-find_package(PkgConfig REQUIRED)
 
-# sdbus-cpp >= 2.0 (system install: libsdbus-c++-dev)
-pkg_check_modules(SDBUS REQUIRED IMPORTED_TARGET sdbus-c++)
+# sdbus-cpp v2.x — prefer system install, fall back to bundled submodule
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+  pkg_check_modules(SDBUS QUIET IMPORTED_TARGET sdbus-c++)
+endif()
+
+if(NOT SDBUS_FOUND)
+  message(STATUS "System sdbus-c++ not found — building from bundled submodule")
+  set(SDBUSCPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(SDBUSCPP_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  add_subdirectory(third_party/sdbus-cpp EXCLUDE_FROM_ALL)
+  # Create an alias target matching the PkgConfig target name
+  if(NOT TARGET PkgConfig::SDBUS)
+    add_library(PkgConfig::SDBUS ALIAS sdbus-c++)
+  endif()
+else()
+  message(STATUS "Using system sdbus-c++ via pkg-config")
+endif()
 
 # Dart SDK headers (optional; bundled copies used if not found)
 if(DEFINED DART_SDK)

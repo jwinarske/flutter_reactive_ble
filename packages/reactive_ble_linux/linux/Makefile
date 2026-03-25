@@ -16,8 +16,19 @@ CXXFLAGS = -std=c++23 -O2 -fPIC -fvisibility=hidden \
            -Wall -Wextra -Wpedantic -Wno-unused-parameter \
            -fcoroutines
 
-SDBUS_CFLAGS  := $(shell pkg-config --cflags sdbus-c++)
-SDBUS_LIBS    := $(shell pkg-config --libs   sdbus-c++)
+# Prefer system sdbus-c++; fall back to bundled submodule
+SDBUS_CFLAGS  := $(shell pkg-config --cflags sdbus-c++ 2>/dev/null)
+SDBUS_LIBS    := $(shell pkg-config --libs   sdbus-c++ 2>/dev/null)
+
+ifeq ($(SDBUS_LIBS),)
+  $(info System sdbus-c++ not found — using bundled submodule. Run CMake for full submodule build.)
+  SDBUS_SUBMOD  = third_party/sdbus-cpp
+  SDBUS_CFLAGS  = -I$(SDBUS_SUBMOD)/include
+  # When using the submodule, CMake must be used to build sdbus-cpp first.
+  # The Makefile will compile bluez_ble.cpp with the submodule headers but
+  # linking requires the static lib built by CMake.
+  SDBUS_LIBS    = -L$(SDBUS_SUBMOD)/build -lsdbus-c++ -lsystemd
+endif
 
 ifneq ($(DART_SDK),)
 DART_INC = -I$(DART_SDK)/include
