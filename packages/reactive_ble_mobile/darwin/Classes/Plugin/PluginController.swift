@@ -38,7 +38,7 @@ final class PluginController {
             },
             onDiscovery: papply(weak: self) { context, _, peripheral, advertisementData, rssi in
                 guard let sink = context.scan?.sink
-                else { assert(false); return }
+                else { return }
 
                 let serviceData = advertisementData[CBAdvertisementDataServiceDataKey] as? ServiceData ?? [:]
                 let serviceUuids = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
@@ -95,7 +95,7 @@ final class PluginController {
             },
             onServicesWithCharacteristicsInitialDiscovery: papply(weak: self) { context, central, peripheral, errors in
                 guard let sink = context.connectedDeviceSink
-                else { assert(false); return }
+                else { return }
 
                 let message = DeviceInfo.with {
                     $0.id = peripheral.identifier.uuidString
@@ -129,9 +129,8 @@ final class PluginController {
                         }
                     }
                 }
-                let sink = context.characteristicValueUpdateSink
-                if sink != nil {
-                    sink!.add(.success(message))
+                if let sink = context.characteristicValueUpdateSink {
+                    sink.add(.success(message))
                 } else {
                     // In case message arrives before sink is created
                     context.messageQueue.append(message)

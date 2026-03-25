@@ -13,7 +13,7 @@ struct ConnectTaskController: PeripheralTaskController {
     func connect(centralManager: CBCentralManager, peripheral: CBPeripheral) -> SubjectTask {
         guard case .pending = task.state
         else {
-            assert(false)
+            assertionFailure("connect called in unexpected state: \(task.state)")
             return task
         }
 
@@ -25,7 +25,7 @@ struct ConnectTaskController: PeripheralTaskController {
     func handleConnectionChange(_ connectionChange: ConnectionChange) -> SubjectTask {
         guard case .processing(since: _, .connecting) = task.state
         else {
-            assert(false)
+            assertionFailure("handleConnectionChange called in unexpected state: \(task.state)")
             return task
         }
 
@@ -40,7 +40,7 @@ struct ConnectTaskController: PeripheralTaskController {
             centralManager.cancelPeripheralConnection(peripheral)
             return task.with(state: task.state.finished(.failedToConnect(error)))
         case .finished:
-            assert(false)
+            assertionFailure("cancel called in finished state")
             return task
         }
     }
