@@ -109,7 +109,13 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
-        scanDevicesHandler.prepareScan(pb.ScanForDevicesRequest.parseFrom(call.arguments as ByteArray))
+        val request = try {
+            pb.ScanForDevicesRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse scan request: ${e.message}", null)
+            return
+        }
+        scanDevicesHandler.prepareScan(request)
         result.success(null)
     }
 
@@ -117,8 +123,13 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
+        val connectDeviceMessage = try {
+            pb.ConnectToDeviceRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse connect request: ${e.message}", null)
+            return
+        }
         result.success(null)
-        val connectDeviceMessage = pb.ConnectToDeviceRequest.parseFrom(call.arguments as ByteArray)
         deviceConnectionHandler.connectToDevice(connectDeviceMessage)
     }
 
@@ -126,7 +137,12 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
-        val args = pb.ClearGattCacheRequest.parseFrom(call.arguments as ByteArray)
+        val args = try {
+            pb.ClearGattCacheRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse clear GATT cache request: ${e.message}", null)
+            return
+        }
         bleClient.clearGattCache(args.deviceId)
             .observeOn(AndroidSchedulers.mainThread())
             .subscribe(
@@ -150,8 +166,13 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
+        val connectDeviceMessage = try {
+            pb.DisconnectFromDeviceRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse disconnect request: ${e.message}", null)
+            return
+        }
         result.success(null)
-        val connectDeviceMessage = pb.DisconnectFromDeviceRequest.parseFrom(call.arguments as ByteArray)
         deviceConnectionHandler.disconnectDevice(connectDeviceMessage.deviceId)
     }
 
@@ -159,9 +180,13 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
+        val readCharMessage = try {
+            pb.ReadCharacteristicRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse read characteristic request: ${e.message}", null)
+            return
+        }
         result.success(null)
-
-        val readCharMessage = pb.ReadCharacteristicRequest.parseFrom(call.arguments as ByteArray)
         val deviceId = readCharMessage.characteristic.deviceId
         val characteristic = uuidConverter.uuidFromByteArray(readCharMessage.characteristic.characteristicUuid.data.toByteArray())
         val characteristicInstance = readCharMessage.characteristic.characteristicInstanceId.toInt()
@@ -241,7 +266,12 @@ class PluginController {
             value: ByteArray,
         ) -> Single<com.signify.hue.flutterreactiveble.ble.CharOperationResult>,
     ) {
-        val writeCharMessage = pb.WriteCharacteristicRequest.parseFrom(call.arguments as ByteArray)
+        val writeCharMessage = try {
+            pb.WriteCharacteristicRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse write characteristic request: ${e.message}", null)
+            return
+        }
         bleClient.writeOperation(
             writeCharMessage.characteristic.deviceId,
             uuidConverter.uuidFromByteArray(writeCharMessage.characteristic.characteristicUuid.data.toByteArray()),
@@ -286,7 +316,12 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
-        val request = pb.NotifyCharacteristicRequest.parseFrom(call.arguments as ByteArray)
+        val request = try {
+            pb.NotifyCharacteristicRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse notify request: ${e.message}", null)
+            return
+        }
         charNotificationHandler.subscribeToNotifications(request)
         result.success(null)
     }
@@ -295,7 +330,12 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
-        val request = pb.NotifyNoMoreCharacteristicRequest.parseFrom(call.arguments as ByteArray)
+        val request = try {
+            pb.NotifyNoMoreCharacteristicRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse stop notify request: ${e.message}", null)
+            return
+        }
         charNotificationHandler.unsubscribeFromNotifications(request)
         result.success(null)
     }
@@ -304,7 +344,12 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
-        val request = pb.NegotiateMtuRequest.parseFrom(call.arguments as ByteArray)
+        val request = try {
+            pb.NegotiateMtuRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse MTU request: ${e.message}", null)
+            return
+        }
         bleClient.negotiateMtuSize(request.deviceId, request.mtuSize)
             .observeOn(AndroidSchedulers.mainThread())
             .subscribe(
@@ -329,7 +374,12 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
-        val request = pb.ChangeConnectionPriorityRequest.parseFrom(call.arguments as ByteArray)
+        val request = try {
+            pb.ChangeConnectionPriorityRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse connection priority request: ${e.message}", null)
+            return
+        }
 
         bleClient.requestConnectionPriority(request.deviceId, request.priority.toConnectionPriority())
             .observeOn(AndroidSchedulers.mainThread())
@@ -359,7 +409,12 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
-        val request = pb.DiscoverServicesRequest.parseFrom(call.arguments as ByteArray)
+        val request = try {
+            pb.DiscoverServicesRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse discover services request: ${e.message}", null)
+            return
+        }
 
         bleClient.discoverServices(request.deviceId)
             .observeOn(AndroidSchedulers.mainThread())
@@ -376,7 +431,12 @@ class PluginController {
         call: MethodCall,
         result: Result,
     ) {
-        val args = pb.ReadRssiRequest.parseFrom(call.arguments as ByteArray)
+        val args = try {
+            pb.ReadRssiRequest.parseFrom(call.arguments as ByteArray)
+        } catch (e: Exception) {
+            result.error("invalid_argument", "Failed to parse read RSSI request: ${e.message}", null)
+            return
+        }
 
         bleClient.readRssi(args.deviceId)
             .observeOn(AndroidSchedulers.mainThread())
