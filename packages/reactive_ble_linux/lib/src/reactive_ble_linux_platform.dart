@@ -24,7 +24,7 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
   StreamController<BleStatus>? _statusCtrl;
   StreamSubscription<BleConnectionEvent>? _connSub;
   StreamSubscription<BleCharEvent>? _notifSub;
-  StreamSubscription<BleAdapterState>? _statusSub;
+  StreamSubscription<BleEvent>? _statusSub;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -69,10 +69,18 @@ class ReactiveBlePlatformLinux extends ReactiveBlePlatform {
     _statusCtrl = StreamController<BleStatus>.broadcast();
 
     // Bridge adapter state → BleStatus
-    _statusSub = _ble.adapterStateStream.listen((s) {
-      final status = s.powered ? BleStatus.ready : BleStatus.poweredOff;
-      _logger?.log('bleStatusStream: adapter powered=${s.powered} → $status');
-      _statusCtrl?.add(status);
+    //
+    // Subscribe directly to the raw events stream so the subscription is
+    // registered in the same synchronous call as the controller creation.
+    // Using adapterStateStream creates a .where().map() transform that
+    // may not be fully wired before the first event arrives.
+    _statusSub = _ble.events.listen((event) {
+      if (event is BleAdapterStateEvent) {
+        final s = event.state;
+        final status = s.powered ? BleStatus.ready : BleStatus.poweredOff;
+        _logger?.log('bleStatusStream: adapter powered=${s.powered} → $status');
+        _statusCtrl?.add(status);
+      }
     });
     // Request initial state now that subscription is active
     _ble.requestAdapterState();
