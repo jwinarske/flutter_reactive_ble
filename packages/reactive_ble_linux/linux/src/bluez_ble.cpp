@@ -330,6 +330,10 @@ struct BleState {
     // Persistent adapter proxy for power state monitoring (lives for entire session)
     std::unique_ptr<sdbus::IProxy> adapter_monitor_proxy;
 
+    // Device connection proxies — must outlive bluez_ble_connect so signal handlers stay alive
+    std::mutex device_proxies_mu;
+    std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> device_proxies;
+
     // Scan proxies — must outlive bluez_ble_start_scan so signal handlers stay alive
     std::unique_ptr<sdbus::IProxy> scan_obj_proxy;     // InterfacesAdded
     std::unique_ptr<sdbus::IProxy> scan_adapter_proxy;  // PropertiesChanged on adapter
@@ -722,7 +726,6 @@ int bluez_ble_connect(const char* address) {
                 sig >> iface >> changed >> invalidated;
                 on_properties_changed(path, iface, changed, invalidated);
             });
-        // finishRegistration removed in sdbus-cpp v2.1+
 
         // Async connect
         proxy->callMethodAsync(mem("Connect"))
@@ -739,6 +742,12 @@ int bluez_ble_connect(const char* address) {
                      post_connection(port, addr, 2u /*connected*/, 0u);
                  }
              });
+
+        // Store proxy so signal handler and async callback survive
+        {
+            std::lock_guard lock(g_state->device_proxies_mu);
+            g_state->device_proxies[path] = std::move(proxy);
+        }
 
         // Post "connecting" state immediately
         Dart_Port port = event_port();
@@ -762,6 +771,12 @@ int bluez_ble_disconnect(const char* address) {
                                          svc(kBluezService), opath(path));
         proxy->callMethod(mem("Disconnect"))
              .onInterface(ifc(kDevice1));
+
+        // Release the stored connection proxy (signal handler no longer needed)
+        {
+            std::lock_guard lock(g_state->device_proxies_mu);
+            g_state->device_proxies.erase(path);
+        }
 
         Dart_Port port = event_port();
         if (port) {
