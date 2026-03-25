@@ -663,6 +663,64 @@ int bluez_ble_start_scan(const char** filter_uuids, uint32_t timeout_ms) {
                 throw;
         }
 
+        // Emit already-known devices from BlueZ's cache.
+        // InterfacesAdded only fires for NEW devices; devices BlueZ already
+        // knows about from a previous scan won't trigger it.
+        {
+            Dart_Port port = event_port();
+            if (port) {
+                try {
+                    auto objs = get_managed_objects();
+                    for (auto& [obj_path, ifaces] : objs) {
+                        auto it = ifaces.find(std::string(kDevice1));
+                        if (it == ifaces.end()) continue;
+
+                        auto& props = it->second;
+                        auto get = [&](const char* key) -> const sdbus::Variant* {
+                            auto p = props.find(key);
+                            return p != props.end() ? &p->second : nullptr;
+                        };
+
+                        std::string addr;
+                        if (auto* v = get("Address")) addr = v->get<std::string>();
+                        else continue;
+
+                        int16_t rssi = 0;
+                        if (auto* v = get("RSSI")) rssi = v->get<int16_t>();
+
+                        bool addr_random = false;
+                        if (auto* v = get("AddressType"))
+                            addr_random = (v->get<std::string>() == "random");
+
+                        std::string name;
+                        if (auto* v = get("Name"))  name = v->get<std::string>();
+                        else if (auto* v = get("Alias")) name = v->get<std::string>();
+
+                        std::vector<uint8_t> mfr_data;
+                        uint16_t mfr_company = 0xFFFF;
+                        if (auto* v = get("ManufacturerData")) {
+                            try {
+                                auto md = v->get<std::map<uint16_t, std::vector<uint8_t>>>();
+                                if (!md.empty()) {
+                                    mfr_company = md.begin()->first;
+                                    mfr_data    = md.begin()->second;
+                                }
+                            } catch (...) {}
+                        }
+
+                        std::vector<std::string> uuids;
+                        if (auto* v = get("UUIDs")) {
+                            try { uuids = v->get<std::vector<std::string>>(); }
+                            catch (...) {}
+                        }
+
+                        post_scan_result(port, addr, rssi, addr_random,
+                                         name, mfr_data, mfr_company, uuids);
+                    }
+                } catch (...) {}
+            }
+        }
+
         // Auto-stop after timeout_ms if non-zero
         if (timeout_ms > 0) {
             std::thread([ms = timeout_ms]() {
