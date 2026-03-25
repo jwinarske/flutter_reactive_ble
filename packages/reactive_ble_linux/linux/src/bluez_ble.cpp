@@ -805,34 +805,32 @@ int bluez_ble_connect(const char* address) {
         // Connect on a background thread so the Dart isolate isn't blocked.
         // Do NOT hold device_proxies_mu during the blocking Connect() call —
         // it would prevent the PropertiesChanged signal handler from running.
-        sdbus::IProxy* raw_proxy = nullptr;
-        {
-            std::lock_guard lock(g_state->device_proxies_mu);
-            auto it = g_state->device_proxies.find(path);
-            if (it != g_state->device_proxies.end())
-                raw_proxy = it->second.get();
-        }
-
-        if (raw_proxy) {
-            std::thread([raw_proxy, path, address = std::string(address)]() {
-                fprintf(stderr, "BLEDBG: Connect() calling on %s\n", path.c_str());
-                try {
-                    raw_proxy->callMethod(mem("Connect"))
-                        .onInterface(ifc(kDevice1));
-                    fprintf(stderr, "BLEDBG: Connect() returned OK for %s\n", path.c_str());
-                } catch (const sdbus::Error& e) {
-                    fprintf(stderr, "BLEDBG: Connect() error: %s\n", e.what());
-                    if (std::string_view(e.getName()) == "org.bluez.Error.InProgress")
-                        return;
-                    Dart_Port port = event_port();
-                    if (!port) return;
-                    uint8_t addr[6]{};
-                    parse_bd_addr(address, addr);
-                    post_connection(port, addr, 0u /*disconnected*/, 1u /*error*/);
-                    post_error(port, e.what());
-                }
-            }).detach();
-        }
+        // Connect on a background thread using a SEPARATE D-Bus connection.
+        // The main connection's event loop (enterEventLoopAsync) processes
+        // signals. A synchronous callMethod on the same connection deadlocks
+        // because the reply can only be delivered by the event loop thread
+        // which is blocked waiting for the reply.
+        std::thread([path, address = std::string(address)]() {
+            fprintf(stderr, "BLEDBG: Connect() calling on %s (separate conn)\n", path.c_str());
+            try {
+                auto conn = sdbus::createSystemBusConnection();
+                auto proxy = sdbus::createProxy(*conn,
+                                                 svc(kBluezService), opath(path));
+                proxy->callMethod(mem("Connect"))
+                    .onInterface(ifc(kDevice1));
+                fprintf(stderr, "BLEDBG: Connect() returned OK for %s\n", path.c_str());
+            } catch (const sdbus::Error& e) {
+                fprintf(stderr, "BLEDBG: Connect() error: %s\n", e.what());
+                if (std::string_view(e.getName()) == "org.bluez.Error.InProgress")
+                    return;
+                Dart_Port port = event_port();
+                if (!port) return;
+                uint8_t addr[6]{};
+                parse_bd_addr(address, addr);
+                post_connection(port, addr, 0u /*disconnected*/, 1u /*error*/);
+                post_error(port, e.what());
+            }
+        }).detach();
 
         return 0;
     } catch (const sdbus::Error& e) {
